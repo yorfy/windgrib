@@ -11,13 +11,13 @@ def ecmf_gfs_wind_speed_comparison():
     # ECMWF download
     print("=== ECMWF download ===\n")
     grib_ecmwf = Grib(model='ecmwf_ifs')
-    grib_ecmwf.download()
+    grib_ecmwf.download(use_cache=False)
     grib_ecmwf.to_nc()
 
     # GFS download
     print("\n=== GFS download ===\n")
     grib_gfs = Grib()
-    grib_gfs.download()
+    grib_gfs.download(use_cache=False)
     grib_gfs.to_nc()
 
     # Get datasets
