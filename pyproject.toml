@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "windgrib"
 dynamic = ["version"]
 authors = [
-    {name = "Your Name", email = "your.email@example.com"},
+    {name = "yorfy", email = "your.email@example.com"},
 ]
 description = "A Python package for working with GRIB weather data files"
 readme = "README.md"
@@ -30,6 +30,7 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Intended Audience :: Developers",
@@ -41,9 +42,9 @@ classifiers = [
 keywords = ["grib", "weather", "meteorology", "data", "forecast", "weather-data", "gfs", "ecmwf"]
 
 [project.urls]
-"Homepage" = "https://github.com/yourusername/windgrib"
-"Bug Tracker" = "https://github.com/yourusername/windgrib/issues"
-"Documentation" = "https://github.com/yourusername/windgrib/blob/main/README.md"
+Homepage = "https://github.com/yorfy/windgrib"
+"Bug Tracker" = "https://github.com/yorfy/windgrib/issues"
+"Documentation" = "https://github.com/yorfy/windgrib"
 
 [tool.setuptools]
 packages = ["windgrib"]

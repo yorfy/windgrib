@@ -2,7 +2,7 @@
 
 [![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.1.0-orange.svg)](https://pypi.org/project/windgrib/)
+[![Version](https://img.shields.io/badge/version-0.2.0-orange.svg)](https://pypi.org/project/windgrib/)
 
 A Python library for downloading, reading, and processing meteorological data in GRIB format.
 
@@ -43,19 +43,19 @@ print(f"Average speed: {wind_speed.mean().values:.2f} m/s")
 
 For complete documentation, examples, and advanced usage:
 
-**[📖 View Full Documentation](docs/index.md)**
+**[📖 View Full Documentation](https://github.com/yorfy/windgrib/tree/master/docs)**
 
-- [Usage Examples](docs/usage_examples.md) - Practical examples with working code
-- [Technical Guide](docs/technical_guide.md) - Implementation details for developers
-- [Custom Models](docs/custom_models.md) - Guide for extending WindGrib
+- [Usage Examples](https://github.com/yorfy/windgrib/tree/master/docs/usage_examples.md) - Practical examples with working code
+- [Technical Guide](https://github.com/yorfy/windgrib/tree/master/docs/technical_guide.md) - Implementation details for developers
+- [Custom Models](https://github.com/yorfy/windgrib/tree/master/docs/custom_models.md) - Guide for extending WindGrib
 
 ## 🤝 Contributing
 
-Contributions are welcome! See our [contribution guide](CONTRIBUTING.md) for more information.
+Contributions are welcome! See our [contribution guide](https://github.com/yorfy/windgrib/blob/master/CONTRIBUTING.md) for more information.
 
 ## 📜 License
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for more details.
+This project is licensed under the MIT License. See the [LICENSE](https://github.com/yorfy/windgrib/blob/master/LICENSE) file for more details.
 
 ---
 

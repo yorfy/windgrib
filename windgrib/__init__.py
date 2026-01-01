@@ -4,8 +4,8 @@ WindGrib - A Python package for working with GRIB weather data files.
 This package provides tools to read, parse, and analyze GRIB format weather data.
 """
 
-__version__ = "0.1.0"
-__author__ = "Your Name"
+__version__ = "0.2.7"
+__author__ = "yorfy"
 __email__ = "your.email@example.com"
 __license__ = "MIT"
 __description__ = "A Python package for working with GRIB weather data files"
