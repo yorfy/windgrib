@@ -27,7 +27,7 @@ MODELS = {
         'idx': '.index',
         'subsets': {
             'wind': {'param': ['10u', '10v']},
-            'land': {'param': ['lsm'], 'step': 0}
+            'land': {'param': ['lsm'], 'step': '0'}
         },
         'var_mapping': {'u10': 'u', 'v10': 'v'},
         'filter_key': 'shortName'
@@ -94,10 +94,12 @@ class GribSubset:
         """Download GRIB file based on index file for this subset."""
         df = self.messages_df(idx_file)
 
-        # filter df with subset variables
-        var = list(self.config.keys())[0]
-        values = self.config[var]
-        df = df[df[var].isin(values)]
+        # filter df with subset params
+        for key, value in self.config.items():
+            if isinstance(value, list):
+                df = df[df[key].isin(value)]
+            else:
+                df = df[df[key]==value]
 
         if df.empty:
             return
@@ -108,9 +110,12 @@ class GribSubset:
             end_byte = group['end_byte'].max()
             end_byte = "" if group['end_byte'].isna().any() else int(end_byte)
             headers = {'Range': f"bytes={start_byte}-{end_byte}"}
-            url = self.grib.url + idx_file.replace(self.grib.model.get('idx', '.idx'), '')
-            if '.grib2' not in url:
-                url += '.grib2'
+
+            file = idx_file.replace(self.grib.model.get('idx', '.idx'), '')
+            url = self.grib.url + file
+            ext = self.grib.model.get('ext', '.grib2')
+            if ext and not url.endswith(ext):
+                url += ext
             r = get(url, headers=headers, timeout=30)
             if r.content:
                 with open(self.grib_file, 'ab', encoding=None) as f:
@@ -157,6 +162,8 @@ class GribSubset:
 
     def _execute_downloads(self, idx_files):
         """Execute the actual downloads."""
+        # for idx_file in idx_files:
+        #     self.download_file(idx_file)
         executor = ThreadPoolExecutor(max_workers=100)
         download_tasks = [executor.submit(self.download_file, idx_file)
                           for idx_file in idx_files]

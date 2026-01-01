@@ -13,47 +13,36 @@ WindGrib is inspired by [Herbie](https://github.com/blaylockbk/Herbie), a compre
 
 ## 📚 Documentation Structure
 
-### For Users
+- **[Usage Examples](usage_examples.md)** - Practical examples with working code
+  - Basic download and data access
+  - Data visualization with matplotlib
+  - Model comparison (ECMWF vs GFS)
+  - Custom models for temperature data
 
-- **[Usage Guide](usage_guide.md)** - Complete guide to different usage modes
-  - Installation and configuration
-  - GRIB data download
-  - Data reading and analysis
-  - NetCDF conversion
-  - Model comparison
-  - Best practices
+- **[Technical Guide](technical_guide.md)** - Implementation details for developers
+  - System architecture and main classes
+  - Download mechanisms and performance optimizations
+  - xarray integration and extensibility
 
-- **[Usage Examples](usage_examples.md)** - Practical and executable examples
-  - Basic examples
-  - Meteorological calculations
-  - Data visualization
-  - Error handling
-  - Advanced usage
-
-### For Developers
-
-- **[Technical Guide](technical_guide.md)** - Implementation details
-  - System architecture
-  - Main classes
-  - Download mechanisms
-  - xarray integration
-  - Performance optimizations
-  - Extensibility
+- **[Custom Models](custom_models.md)** - Guide for extending WindGrib
+  - Defining new data models
+  - Configuration examples
+  - Integration with other data sources
 
 ## 🚀 Getting Started
 
-If you're new to WindGrib, we recommend starting with:
+If you're new to WindGrib:
 
 1. **Install the library**:
    ```bash
    pip install windgrib
    ```
 
-2. **Read the Usage Guide** to understand basic concepts and main usage modes.
+2. **Try the basic example** below to understand core concepts
 
-3. **Explore the examples** to see concrete use cases.
+3. **Explore the [usage examples](usage_examples.md)** for specific use cases
 
-4. **Consult the technical guide** if you want to contribute or understand implementation details.
+4. **Check the [technical guide](technical_guide.md)** for advanced usage
 
 ## 📈 Quick Example
 
@@ -74,27 +63,6 @@ wind_speed = np.sqrt(wind_data.u**2 + wind_data.v**2)
 print(f"Average speed: {wind_speed.mean().values:.2f} m/s")
 ```
 
-**Custom Model Example** - Extending to temperature data:
-
-```python
-from windgrib.grib import MODELS, Grib
-
-# Define custom model for temperature data
-MODELS['gfs_atmos'] = {
-    'product': 'global.0p25',
-    'url': 'https://noaa-gfs-bdp-pds.s3.amazonaws.com/',
-    'key': 'gfs.{date}/{h:02d}/atmos/',
-    'subsets': {
-        'temperature': {'variable': ['TMP']}
-    }
-}
-
-# Download temperature data using custom model
-grib_temp = Grib(model='gfs_atmos')
-grib_temp.download()
-temp_data = grib_temp['temperature']
-```
-
 ## 🔧 Supported Models
 
 WindGrib provides built-in support for wind data from major weather models, with the flexibility to define custom models for additional variables. All data is sourced from Amazon S3 for efficient parallel downloads.
@@ -108,25 +76,7 @@ WindGrib provides built-in support for wind data from major weather models, with
 
 ### Custom Models
 
-WindGrib's architecture allows you to define custom models for additional variables beyond wind data. The [custom models guide](custom_models.md) provides detailed instructions on how to:
-
-- Define new data models for different variables (temperature, pressure, humidity, etc.)
-- Configure custom data sources and file structures
-- Extend functionality through subclassing
-- Integrate with other meteorological data providers
-
-Example custom model for temperature data:
-```python
-MODELS['my_temp_model'] = {
-    'product': 'custom_product',
-    'url': 'https://my-s3-bucket.s3.amazonaws.com/',
-    'key': '{date}/{h:02d}/custom_path/',
-    'subsets': {
-        'temperature': {'variable': ['TMP']},
-        'humidity': {'variable': ['RH']}
-    }
-}
-```
+WindGrib's architecture allows you to define custom models for additional variables beyond wind data. The [custom models guide](custom_models.md) and [usage examples](usage_examples.md) provide detailed instructions and working examples.
 
 ## 🤝 Contributing
 

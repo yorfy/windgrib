@@ -10,9 +10,8 @@ This technical guide explains the implementation details and advanced usage mode
 4. [Subset Management](#subset-management)
 5. [Format Conversion](#format-conversion)
 6. [xarray Integration](#xarray-integration)
-7. [Error Handling](#error-handling)
-8. [Performance Optimizations](#performance-optimizations)
-9. [Extensibility](#extensibility)
+7. [Performance Optimizations](#performance-optimizations)
+8. [Extensibility](#extensibility)
 
 ## System Architecture
 
@@ -238,30 +237,6 @@ for var_name in ['u10', 'v10']:
 merged_ds = xr.merge(datasets, compat='override', join='outer')
 ```
 
-## Error Handling
-
-### Types of Handled Errors
-
-1. **Files Not Found**: Handle unavailable dates
-2. **Failed Downloads**: Retry with backoff
-3. **Corrupted Data**: Validate loaded datasets
-4. **Missing Variables**: Handle incomplete subsets
-
-### Retry Mechanism
-
-```python
-# In find_forecast_time() method
-if not idx_files:
-    self._retry_count += 1
-    if self._retry_count > self.max_retry:
-        raise ValueError(f"No files found after {self.max_retry} attempts")
-    
-    # Search 6h back
-    time -= pd.Timedelta(6, 'h')
-    new_instance = Grib(time, model=self.model, data_path=self.data_path)
-    self.__dict__.update(new_instance.__dict__)
-```
-
 ## Performance Optimizations
 
 ### Parallel Download
@@ -354,7 +329,12 @@ The `GribSubset` class can be extended to add new functionality:
 
 ```python
 class MyGribSubset(GribSubset):
-    def my_new_method(self):
+    def custom_processing(self):
+        """Add custom data processing logic"""
+        ds = self.ds
+        # Custom processing here
+        return processed_data
+```_method(self):
         # Custom implementation
         ds = self.ds
         # Specific processing

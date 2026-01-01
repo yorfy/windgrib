@@ -140,8 +140,8 @@ print(f"Average difference: {difference.mean().values}")
 
 ## 📈 Complete Examples
 
-- **Wind Comparison**: See our [comparison example](examples/ecmf_gfs_wind_comparison.py) between ECMWF and GFS models for wind data
-- **GFS Temperature Data**: See the [temperature example](examples/gfs_temperature_example.py) demonstrating how to define and use custom models beyond the default wind subsets (GFS and ECMWF). This example shows how to extend WindGrib's capabilities to download and analyze different atmospheric variables like temperature data.
+- **Wind Comparison**: See our [comparison example](examples/ecmf_gfs_wind_speed_comparison.py) between ECMWF and GFS models for wind data
+- **GFS Temperature Data**: See the [temperature example](examples/temperature_variation_near_toulouse.py) demonstrating how to define and use custom models beyond the default wind subsets (GFS and ECMWF). This example shows how to extend WindGrib's capabilities to download and analyze different atmospheric variables like temperature data.
 
 ## 🔧 Configuration
 
