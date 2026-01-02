@@ -7,7 +7,7 @@ from windgrib import __version__, __author__, __email__, __license__, __descript
 def test_version():
     """Test that version is defined and is a string."""
     assert isinstance(__version__, str)
-    assert __version__ == "0.1.0"
+    assert __version__ == "0.2.7"
 
 
 def test_metadata():
@@ -36,6 +36,9 @@ def test_grib_module():
         pytest.fail(f"Failed to import grib module: {e}")
 
 
+def test_grib_download():
+    from windgrib import Grib
+    Grib().download()
 # Add more specific tests for your GRIB functionality here
 # For example:
 # def test_read_grib_file():
