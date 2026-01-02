@@ -2,7 +2,7 @@
 
 [![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.2.0-orange.svg)](https://pypi.org/project/windgrib/)
+[![Version](https://img.shields.io/badge/version-0.2.7-orange.svg)](https://pypi.org/project/windgrib/)
 
 A Python library for downloading, reading, and processing meteorological data in GRIB format.
 
@@ -14,6 +14,8 @@ WindGrib focuses on efficient wind data extraction and targeted variable downloa
 - **Automatic Latest Data**: Retrieves the most recent available forecast data
 - **Smart Caching**: Intelligent caching with incremental download completion
 - **Multi-Model Support**: GFS Wave, ECMWF IFS, and custom model definitions
+- **AWS S3 Focused**: Specifically designed for meteorological data hosted on Amazon S3
+- **Bulk Download Optimization**: Designed to quickly retrieve all wind components for a given forecast time
 
 ## 🚀 Installation
 
@@ -28,7 +30,7 @@ from windgrib import Grib
 import numpy as np
 
 # Download GFS wind data
-grib = Grib(model='gfswave')
+grib = Grib(time='2026/01/3', model='gfswave')
 grib.download()
 
 # Access wind data

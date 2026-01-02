@@ -4,12 +4,20 @@ Welcome to the official documentation for WindGrib, a Python library for working
 
 ## 🎯 Project Overview and Goals
 
-WindGrib is inspired by [Herbie](https://github.com/blaylockbk/Herbie), a comprehensive meteorological data access library, but focuses specifically on efficient wind data extraction and targeted variable downloading.
+WindGrib addresses the specific need for fast, bulk wind data retrieval from meteorological models. While [Herbie](https://github.com/blaylockbk/Herbie) excels at flexible, query-based data access, WindGrib optimizes for a different use case: efficiently downloading complete wind datasets for forecast analysis.
 
-**Key Innovations:**
-- **Subset-Based Downloads**: Uses GRIB index files to download only the specific variables you need (e.g., wind components UGRD/VGRD), reducing bandwidth and storage requirements
-- **Automatic Latest Data**: Automatically retrieves the most recent available forecast data without manual date specification
-- **Smart Caching**: Incremental download completion - if data isn't immediately available, the system automatically resumes as new data becomes available
+**Design Philosophy:**
+- **AWS S3 Focused**: Specifically designed for meteorological data hosted on Amazon S3 (NOAA, ECMWF)
+- **s3fs Integration**: Uses s3fs for efficient scanning and discovery of available datasets
+- **Bulk Download Optimization**: Designed to quickly retrieve all wind components for a given forecast time
+- **Subset-Based Organization**: Pre-configured data subsets (wind, land masks) for immediate use
+- **File Consolidation**: Concatenates multiple GRIB files into single datasets per subset, simplifying data management
+- **Parallel Processing**: Optimized for concurrent downloads of multiple GRIB files
+- **Forecast-Centric**: Focuses on getting complete forecast datasets rather than selective variable queries
+
+**Key Advantage:** While Herbie requires managing multiple individual GRIB files, WindGrib consolidates all related data (e.g., all wind forecast steps) into unified datasets, eliminating the complexity of handling numerous separate files.
+
+**Limitation:** WindGrib is specifically designed for AWS S3-hosted meteorological data and uses s3fs for data discovery. It cannot access data from other sources or protocols.
 
 ## 📚 Documentation Structure
 

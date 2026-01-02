@@ -95,12 +95,12 @@ Manages operations specific to a data subset.
 grib = Grib(model='ecmwf_ifs')
 
 # 2. Detect available files
-grib.find_forecast_time()
+grib.find_latest_forecast()
 
 # 3. Download subsets
 for subset in grib._subsets.values():
     subset.download()
-    
+
 # 4. For each subset:
 #    - Check cache
 #    - Download missing files
@@ -245,7 +245,7 @@ Use `ThreadPoolExecutor` to accelerate downloads:
 
 ```python
 executor = ThreadPoolExecutor(max_workers=100)
-download_tasks = [executor.submit(self.download_file, idx_file)
+download_tasks = [executor.submit(self.download_messages, idx_file)
                   for idx_file in idx_files]
 
 # Progress tracking with tqdm
@@ -279,7 +279,7 @@ if use_cache and grib_file.exists():
     return
 
 # Download only if necessary
-self.download_file(idx_file)
+self.download_messages(idx_file)
 ```
 
 ## Extensibility
