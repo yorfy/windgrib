@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import s3fs
 import xarray as xr
-from requests import get
+import requests
 from tqdm import tqdm
 from tqdm.dask import TqdmCallback
 
@@ -67,62 +67,31 @@ class GribSubset:
         """Get NetCDF file path for this subset."""
         return self.grib_file.with_suffix('.nc')
 
-    def messages_df(self, idx_file):
-        """Parse index file and return DataFrame of messages."""
-        url = self.grib.url
-        if idx_file.endswith('.index'):
-            idx_txt = get(url + idx_file, timeout=30).text.rstrip('\n ').replace('\n', ',')
-            idx_txt = '[' + idx_txt + ']'
-            df = pd.DataFrame(json.loads(idx_txt))
-            df['message_id'] = df.index
-            df['start_byte'] = df['_offset']
-            df['end_byte'] = df['start_byte'] + df['_length'] - 1
-        else:
-            idx_txt = get(url + idx_file, timeout=30).text.split('\n')
-            df = pd.DataFrame(
-                [row.split(':') for row in idx_txt if row],
-                columns=[
-                    'message_id', 'start_byte', 'reference_time',
-                    'variable', 'layer', 'forecast_time', '?'
-                ])
-            df['message_id'] = df['message_id'].astype(int)
-            df['start_byte'] = df['start_byte'].astype(int)
-            df['end_byte'] = df['start_byte'].shift(-1) - 1
-        return df
-
-    def download_file(self, idx_file):
-        """Download GRIB file based on index file for this subset."""
-        df = self.messages_df(idx_file)
+    def download_messages(self, idx_file):
+        """Download parts of GRIB file based on index file for messages of this subset."""
+        df = self.grib.messages_df(idx_file)
 
         # filter df with subset params
         for key, value in self.config.items():
             if isinstance(value, list):
-                df = df[df[key].isin(value)]
+                df = df.loc[df[key].isin(value)]
             else:
-                df = df[df[key]==value]
+                df = df.loc[df[key] == value]
 
         if df.empty:
-            return
+            return None, idx_file
 
+        result = bytes()
         df['download_groups'] = df['message_id'].diff().ne(1).cumsum()
         for _, group in df.groupby('download_groups'):
             start_byte = group['start_byte'].min()
             end_byte = group['end_byte'].max()
             end_byte = "" if group['end_byte'].isna().any() else int(end_byte)
             headers = {'Range': f"bytes={start_byte}-{end_byte}"}
-
-            file = idx_file.replace(self.grib.model.get('idx', '.idx'), '')
-            url = self.grib.url + file
-            ext = self.grib.model.get('ext', '.grib2')
-            if ext and not url.endswith(ext):
-                url += ext
-            r = get(url, headers=headers, timeout=30)
-            if r.content:
-                with open(self.grib_file, 'ab', encoding=None) as f:
-                    f.write(r.content)
-
-        with open(self.grib_ls, 'a', encoding='utf-8') as f:
-            f.write(idx_file + '\n')
+            r = self.grib.download_file(idx_file, headers=headers)
+            if r:
+                result += r
+        return result, idx_file
 
     def download(self, use_cache=True):
         """Download GRIB files for this subset."""
@@ -134,7 +103,10 @@ class GribSubset:
 
         ls = self._get_existing_files()
         idx_files = self._get_files_to_download(ls)
-        downloaded_count = self._execute_downloads(idx_files)
+
+        downloaded_count = 0
+        if idx_files:
+            downloaded_count = self._execute_downloads(idx_files)
 
         return downloaded_count
 
@@ -162,18 +134,22 @@ class GribSubset:
 
     def _execute_downloads(self, idx_files):
         """Execute the actual downloads."""
-        # for idx_file in idx_files:
-        #     self.download_file(idx_file)
-        executor = ThreadPoolExecutor(max_workers=100)
-        download_tasks = [executor.submit(self.download_file, idx_file)
-                          for idx_file in idx_files]
-
         desc = f'Downloading {self.name} grib files'
-        with tqdm(total=len(download_tasks), desc=desc) as progress_bar:
-            for _ in as_completed(download_tasks):
+        with (ThreadPoolExecutor(max_workers=100) as executor,
+              open(self.grib_file, 'ab', encoding=None) as grib_f,
+              open(self.grib_ls, 'a', encoding='utf-8') as ls_f,
+              tqdm(total=len(idx_files), desc=desc) as progress_bar):
+
+            download_tasks = [executor.submit(self.download_messages, idx_file)
+                              for idx_file in idx_files]
+
+            for future in as_completed(download_tasks):
+                grib_data, from_idx_file = future.result()
+                if grib_data:
+                    grib_f.write(grib_data)
+                ls_f.write(from_idx_file + '\n')
                 progress_bar.update(1)
 
-        executor.shutdown(wait=True)
         return len(idx_files)
 
     @property
@@ -201,8 +177,6 @@ class GribSubset:
             self._has_new_steps = True
             ds = self.load_grib_file()
 
-        if ds is None:
-            print('fuck')
         if 'step' in ds.dims:
             ds = ds.sortby('step')
 
@@ -266,7 +240,7 @@ class GribSubset:
 
         if len(datasets) > 1:
             return xr.merge(datasets, compat='override', join='outer')
-        if len(datasets) == 1:
+        if datasets:
             return datasets[0]
         return None
 
@@ -309,6 +283,7 @@ class Grib:
                  data_path=None, max_retry=10):
         """Initialize GRIB downloader."""
         self.max_retry = max_retry
+        self._session = requests.Session()
 
         if isinstance(model, str):
             model = model.lower()
@@ -325,12 +300,13 @@ class Grib:
             self.data_path = Path(data_path)
 
         time = pd.Timestamp(time) if time is not None else pd.Timestamp.utcnow()
-        h = time.hour - time.hour % 6
-        self.date = time.strftime("%Y%m%d")
-        self.h = str(h)
+        self.date = None
+        self.h = None
+        # find latest available forecast and set self.date and self.h
+        self.find_latest_forecast(time)
 
-        self._retry_count = 0
-        self.find_forecast_time(time)
+        # Initialize forecast data folder
+        self.folder_path.mkdir(parents=True, exist_ok=True)
 
         # Initialize subsets dictionary
         self._subsets = {}
@@ -361,24 +337,25 @@ class Grib:
         """Get list of subset names to process."""
         return list(self.model['subsets'].keys())
 
-    def find_forecast_time(self, time):
+    def find_latest_forecast(self, time):
         """Initialize files and handle retry logic."""
-        idx_files = self.idx_files
+        idx_files = []
+        retry_count = 0
+        while not idx_files and retry_count <= self.max_retry:
+            h = time.hour - time.hour % 6
+            self.date = time.strftime("%Y%m%d")
+            self.h = str(h)
+            idx_files = self.idx_files
+            if not idx_files:
+                print(f"Grib files not found at: {self.date}-{self.h}h. Looking 6h before.")
+            time -= pd.Timedelta(6, 'h')
+            retry_count += 1
         if idx_files:
-            print(f"Found grib files to download at: {time}")
-            print(f"Using data path: {self.data_path}")
-            self.folder_path.mkdir(parents=True, exist_ok=True)
-            return
+            print(f"Found grib files to download at: {self.date}-{self.h}h")
+        else:
+            raise ValueError(f"No files found after {self.max_retry} "
+                             f"attempts for {self.model['name']}")
 
-        self._retry_count += 1
-        if self._retry_count > self.max_retry:
-            raise ValueError(f"No files found after 10 attempts for {self.model['name']}")
-
-        print(f"Grib files not found at: {time}. Looking 6h before.")
-        time -= pd.Timedelta(6, 'h')
-        new_instance = Grib(time, model=self.model, data_path=self.data_path)
-
-        self.__dict__.update(new_instance.__dict__)
 
     @property
     def idx_files(self):
@@ -391,6 +368,30 @@ class Grib:
         idx_files = s3fs.S3FileSystem(anon=True).glob(files_pattern)
         return [f.split('/')[-1] for f in idx_files]
 
+    def messages_df(self, idx_file):
+        """Parse index file and return DataFrame of messages."""
+
+        if idx_file.endswith('.index'):
+            idx_txt = (self._session.get(self.url + idx_file, timeout=30).text
+                       .rstrip('\n ').replace('\n', ','))
+            idx_txt = '[' + idx_txt + ']'
+            df = pd.DataFrame(json.loads(idx_txt))
+            df['message_id'] = df.index
+            df['start_byte'] = df['_offset']
+            df['end_byte'] = df['start_byte'] + df['_length'] - 1
+        else:
+            idx_txt = self._session.get(self.url + idx_file, timeout=30).text.split('\n')
+            df = pd.DataFrame(
+                [row.split(':') for row in idx_txt if row],
+                columns=[
+                    'message_id', 'start_byte', 'reference_time',
+                    'variable', 'layer', 'forecast_time', '?'
+                ])
+            df['message_id'] = df['message_id'].astype(int)
+            df['start_byte'] = df['start_byte'].astype(int)
+            df['end_byte'] = df['start_byte'].shift(-1) - 1
+        return df
+
     def download(self, use_cache=True):
         """Download GRIB files for subsets."""
         total_downloaded = 0
@@ -399,6 +400,22 @@ class Grib:
             total_downloaded += subset.download(use_cache)
 
         return total_downloaded
+
+    def download_file(self, idx_file, headers=None):
+        """Download a single GRIB file."""
+        file = idx_file.replace(self.model.get('idx', '.idx'), '')
+        url = self.url + file
+        ext = self.model.get('ext', '.grib2')
+        if ext and not url.endswith(ext):
+            url += ext
+
+        r = self._session.get(url, headers=headers, timeout=30)
+
+        if r.status_code not in [200, 206] or not r.content:
+            print(f"Failed to download {idx_file}: {r.status_code}")
+            return None
+
+        return r.content
 
     def __getitem__(self, subset_name):
         """Get dataset for a specific subset using bracket notation."""
