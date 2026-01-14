@@ -3,26 +3,24 @@ using cache and saving data to netcdf format to speedup further data reading"""
 
 from windgrib import Grib
 
-# Create a GRIB instance for the GFS Wave model
-grib = Grib(model='gfswave')
+if __name__ == '__main__':
+    # Create a GRIB instance for the GFS Wave model
+    print("\n====Initiating Grib instance and looking for forecast data====")
+    g = Grib(model='ecmwf_ifs')
+    # g = Grib()
 
-# Download the data
-print("Downloading GFS Wave data...")
-grib.download(use_cache=True)
-# use_cache=True is the default option
-# But you can use use_cache=False to force downloading ignoring cache files
+    # Download the data
+    print("\n====Downloading GFS Wave data...====")
+    g.download(clear_cache=True)
+    # clear_cache=False is the default option
+    # But you can use clear_cache=True to force downloading ignoring cache files
 
-# Access wind data
-wind_data = grib['wind']
+    # save to grib file for further analysis of downloaded data
+    g.to_grib_file()
 
-# Display basic information
-print(f"Available variables: {list(wind_data.data_vars)}")
-print(f"Dimensions: {dict(wind_data.sizes)}")
-print(f"Time period: {wind_data.time.values}")
+    # Access wind data
+    wind_data = g['wind']
+    print(f"====Loaded dataset====\n{wind_data}")
 
-# Access specific subset
-print(f"U data shape: {wind_data.u.shape}")
-print(f"V data shape: {wind_data.v.shape}")
-
-# save to netcdf file to speedup further data reading
-grib.to_nc()
+    # save to netcdf file to speedup further data reading
+    g.to_nc()
