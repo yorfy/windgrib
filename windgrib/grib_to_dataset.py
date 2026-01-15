@@ -197,7 +197,7 @@ def grib_to_dataset(
                 total=len(messages)
             ))
     else:
-        print(desc + f'({len(messages)})')
+        print(desc + f' ({len(messages)})')
         data_arrays = [message_to_data_array(msg) for msg in messages]
 
     if len(data_arrays) == 1:
@@ -251,6 +251,6 @@ def grib_to_dataset(
     if 'GRIB_centreDescription' in ds.attrs:
         ds.attrs['institution'] = ds.attrs['GRIB_centreDescription']
 
-    ds = xr.decode_cf(ds)
+    ds = xr.decode_cf(ds, decode_timedelta=False)
 
     return ds
