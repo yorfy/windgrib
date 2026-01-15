@@ -165,14 +165,29 @@ def split_messages(grib_bytes: bytes):
     return messages
 
 
+def grib_steps(grib_bytes: bytes):
+    """Get a set of available steps from GRIB bytes."""
+    messages = split_messages(grib_bytes)
+    steps = set()
+    for msg in messages:
+        step = cfmessage(msg).get('step:int', None)
+        if step is not None:
+            steps.add(step)
+    return steps
+
+
 def grib_to_dataset(
-    grib_bytes: bytes,
-    parallel: int=20,
-    desc: str='📊 Decoding GRIB messages'
-): #pylint: disable=too-many-locals
+        grib_bytes: bytes,
+        steps=None,
+        parallel: int = 20,
+        desc: str = '📊 Decoding GRIB messages'
+):  # pylint: disable=too-many-locals
     """Convert GRIB bytes to xarray dataset."""
     # Split grib bytes in messages bytes
     messages = split_messages(grib_bytes)
+
+    if steps:
+        messages = [msg for msg in messages if cfmessage(msg)['step'] in steps]
 
     if parallel and len(messages) > parallel:
         with ProcessPoolExecutor() as executor:
@@ -185,18 +200,25 @@ def grib_to_dataset(
         print(desc + f'({len(messages)})')
         data_arrays = [message_to_data_array(msg) for msg in messages]
 
-    # Sort data arrays by time and variable name
-    data_arrays = sorted(data_arrays, key=lambda x: x.step)
-    vars_data = {}
-    for da in data_arrays:
-        if da.name not in vars_data:
-            vars_data[da.name] = []
-        vars_data[da.name].append(da)
+    if len(data_arrays) == 1:
+        ds = data_arrays[0].to_dataset()
+    else:
+        # Sort data arrays by time and variable name
+        data_arrays = sorted(data_arrays, key=lambda x: x.step)
+        steps = np.unique([da.step for da in data_arrays if 'step' in da.coords])
+        vars_data = {}
+        for da in data_arrays:
+            if da.name not in vars_data:
+                vars_data[da.name] = []
+            vars_data[da.name].append(da)
 
-    # Create dataset
-    datasets = [xr.concat(items, dim='step', coords='different', compat='no_conflicts')
-                for items in vars_data.values()]
-    ds = xr.merge(datasets, compat='no_conflicts')
+        # Create dataset
+        if len(steps) > 1:
+            datasets = [xr.concat(items, dim='step', coords='different', compat='no_conflicts')
+                        for items in vars_data.values()]
+        else:
+            datasets = [da.to_dataset() for da in data_arrays]
+        ds = xr.merge(datasets, compat='no_conflicts')
 
     # Add variables attrs
     var_attrs = {}
@@ -228,5 +250,7 @@ def grib_to_dataset(
     ds.attrs.update(global_attrs)
     if 'GRIB_centreDescription' in ds.attrs:
         ds.attrs['institution'] = ds.attrs['GRIB_centreDescription']
+
+    ds = xr.decode_cf(ds)
 
     return ds
