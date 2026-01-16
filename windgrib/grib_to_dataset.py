@@ -180,6 +180,8 @@ def grib_to_dataset(
         grib_bytes: bytes,
         steps=None,
         parallel: int = 20,
+        progress_bar: bool = True,
+        decode_timedelta: bool = False,
         desc: str = '📊 Decoding GRIB messages'
 ):  # pylint: disable=too-many-locals
     """Convert GRIB bytes to xarray dataset."""
@@ -191,11 +193,14 @@ def grib_to_dataset(
 
     if parallel and len(messages) > parallel:
         with ProcessPoolExecutor() as executor:
-            data_arrays = list(tqdm(
-                executor.map(message_to_data_array, messages),
-                desc=desc,
-                total=len(messages)
-            ))
+            if progress_bar:
+                data_arrays = list(tqdm(
+                    executor.map(message_to_data_array, messages),
+                    desc=desc,
+                    total=len(messages)
+                ))
+            else:
+                data_arrays = executor.map(message_to_data_array, messages)
     else:
         print(desc + f' ({len(messages)})')
         data_arrays = [message_to_data_array(msg) for msg in messages]
@@ -251,6 +256,6 @@ def grib_to_dataset(
     if 'GRIB_centreDescription' in ds.attrs:
         ds.attrs['institution'] = ds.attrs['GRIB_centreDescription']
 
-    ds = xr.decode_cf(ds, decode_timedelta=False)
+    ds = xr.decode_cf(ds, decode_timedelta=decode_timedelta)
 
     return ds

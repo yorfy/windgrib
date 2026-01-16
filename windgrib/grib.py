@@ -12,7 +12,7 @@ import pandas as pd
 import xarray as xr
 from tqdm import tqdm
 
-from windgrib.grib_to_dataset import grib_to_dataset
+from windgrib.grib_to_dataset import grib_to_dataset, grib_steps
 
 MODELS = {
     'gfswave': {
@@ -20,7 +20,7 @@ MODELS = {
         'url': 'https://noaa-gfs-bdp-pds.s3.amazonaws.com/',
         'key': 'gfs.{date}/{h:02d}/wave/gridded/',
         'subsets': {
-            'wind': {'variable': ['UGRD', 'VGRD']}
+            'wind': ['UGRD', 'VGRD']
         }
     },
     'ecmwf_ifs': {
@@ -29,12 +29,11 @@ MODELS = {
         'key': '{date}/{h:02d}z/ifs/0p25/oper/',
         'idx': '.index',
         'subsets': {
-            'wind': {'param': ['10u', '10v'], 'rename': {'u10': 'u', 'v10': 'v'}},
-            'land': {'param': ['lsm'], 'step': 0}
+            'wind': ['10u', '10v'],
+            'land': (['lsm'], 0)
         }
     }
 }
-
 
 
 async def download_file(session, url, headers=None):
@@ -60,8 +59,8 @@ def get_headers(start_byte, end_byte, **kwargs):
 
 def get_partitions(df):
     """Compute partitions to be downloaded (from an idx DataFrame)"""
-    df['partition_id'] = df.groupby('idx_file').message_id.diff().ne(1).cumsum()
-    groups = df.groupby('partition_id')
+    partition_id = df.groupby('idx_file').message_id.diff().ne(1).cumsum()
+    groups = df.groupby(partition_id)
     groups.agg({'start_byte': 'min'})
     partitions = pd.DataFrame([
         groups['step'].first().astype(int),
@@ -74,21 +73,30 @@ def get_partitions(df):
     ]).T
     return partitions
 
-
 class GribSubset:
     """Handles individual subset operations for GRIB data with async downloads."""
 
-    def __init__(self, name, config, grib_instance):
+    def __init__(self, name, grib_instance, var, step=None, **filter_keys):
         """Initialize subset with name, configuration and parent grib instance."""
         self.name = name
-        self.config = config
+        self.var = var
+        self.filter_keys = filter_keys
         self.grib = grib_instance
         self._new_idx_files = None
         self._grib_data = None
         self._ds = None
+        self._step = self.grib.step
+        if step is not None:
+            self._step = list(np.unique(step))
 
-        print(f"🧩 [{self.grib.model['name']}] Initializing {name} subset:"
-              f" {str(config).replace('{', '').replace('}', '')}")
+        print(f"🧩 [{self.grib.model['name']}] ({name})"
+              f" Initializing subset: {self}")
+
+    def __str__(self):
+        return f"({self.name}) {self.var} len(step)={len(self.step)}"
+
+    def __getitem__(self, keys):
+        return GribSubset(self.name, self.grib, self.var, *keys)
 
     @property
     def grib_file(self):
@@ -98,19 +106,9 @@ class GribSubset:
                 f"{self.grib.model['product']}.grib2")
 
     @property
-    def grib_ls(self):
-        """Get GRIB list file path for this subset."""
-        return self.grib_file.with_suffix('.grib2.ls')
-
-    @property
-    def nc_file(self):
+    def netcdf_file(self):
         """Get NetCDF file path for this subset."""
         return self.grib_file.with_suffix('.nc')
-
-    @property
-    def nc_ls(self):
-        """Get GRIB list file path for this subset."""
-        return self.nc_file.with_suffix('.nc.ls')
 
     @property
     def idx(self):
@@ -119,10 +117,18 @@ class GribSubset:
         # get grib message dataframe from grib instance
         df = self.grib.idx
 
-        # filter with subset params
-        for key, value in self.config.items():
-            if key == 'rename':
-                continue
+        if df.empty:
+            return df
+
+        # filter with var
+        var_name = 'variable' if 'variable' in df else 'param'
+        df = df.loc[df[var_name].isin(self.var)]
+
+        # filter with step
+        df = df.loc[df['step'].isin(self.step)]
+
+        # filter with subset filter keys
+        for key, value in self.filter_keys.items():
             if isinstance(value, list):
                 df = df.loc[df[key].isin(value)]
             else:
@@ -130,180 +136,194 @@ class GribSubset:
 
         return df.sort_values(['step', 'message_id']).reset_index(drop=True)
 
-    def download(self, clear_cache=False, progress_bar=True):
-        """Download GRIB files for this subset asynchronously."""
-        start_time = time.time()
-
-        if clear_cache:
-            self.clear_cache()
-
-        # Evaluate new_idx_files
-        new_files = self.new_idx_files
-        # get grib messages for new idx files
-        if not new_files:
-            print(f'✔️ [{self.grib.model["name"]}] All available GRIB files '
-                  f'for {self.name} have already been downloaded')
-            return None
-
-        df = self.idx
-        df = df[df['idx_file'].isin(new_files)]
-
-        print(f"🎯 [{self.grib.model['name']}] Found {len(df)} "
-              f"new message{'s' if len(df) > 1 else ''} for {self.name} subset")
-        # wait for a short time to prevent logs interleaving
-        time.sleep(0.01)
-
-        # download all messages
-        desc = f'📥 [{self.grib.model["name"]}] Downloading {self.name} subset from GRIB files'
-        self._grib_data = self.grib.download_data(df, progress_bar=progress_bar, desc=desc)
-
-        download_time = time.time() - start_time
-        print(f"✅ [{self.grib.model['name']}] {self.name} subset "
-              f"downloaded in {download_time:.2f}s")
-
-        if self.grib.use_cache:
-            self.to_grib_file()
-
-        return len(df)
-
     @property
-    def new_idx_files(self):
-        """Get list of files that need to be downloaded."""
-        if self._new_idx_files is None:
-            idx_files = self.grib.idx_files
+    def step(self):
+        """Get available steps for this subset."""
+        return self._step
 
-            if self.grib_ls.exists():
-                with open(self.grib_ls, 'r', encoding='utf-8') as f:
-                    ls = f.read().splitlines()
-                idx_files = [idx_file for idx_file in idx_files if idx_file not in ls]
-
-            self._new_idx_files = idx_files
-
-        return self._new_idx_files
+    def current_step(self):
+        """Get current step for this subset."""
+        return self.grib.current_step
 
     @property
     def ds(self):
         """dataset accessor"""
         if self._ds is None:
-            self._ds = self.load_dataset()
+            self.load_dataset()
         return self._ds
 
     def load_dataset(self):
         """loading dataset from cache files"""
-        ds = None
-        # if self.grib_ls.exists():
-        #     with open(self.grib_file, 'rb') as f:
-        #         grib_data = f.read()
-        #     ds = grib_to_dataset(grib_data)
-
-        if not self.new_idx_files:
-            return ds
-
         start_time = time.time()
-        desc = f"📊 [{self.grib.model['name']}] Decoding GRIB messages for {self.name} subset"
-        if ds is None:
-            ds = grib_to_dataset(self._grib_data, desc=desc)
-            if 'rename' in self.config:
-                ds = ds.rename(self.config['rename'])
+        ds = None
+        nc_steps = set()
+
+        # Load from NetCDF if exists
+        if self.grib.use_cache and self.netcdf_file.exists():
+            with xr.open_dataset(self.netcdf_file, chunks={'step': 1}, decode_timedelta=False) as nc_ds:
+                ds = nc_ds.sel(step=self.step).load()
+                nc_steps = set(ds.step.values)
+                print(f"📂 [{self.grib.model['name']}] ({self.name})"
+                      f" Found {len(nc_steps)} steps from NetCDF file")
+
+        grib_data = self._grib_data
+        if self.grib.use_cache and self.grib_file.exists():
+            with open(self.grib_file, 'rb') as f:
+                grib_data = f.read()
+
+        new_steps = (grib_steps(grib_data) - nc_steps).intersection(self.step)
+
+        if new_steps:
+            print(f"🎯 [{self.grib.model['name']}] ({self.name})"
+                  f" Found {len(new_steps)} steps to load in GRIB")
+
+            # Check GRIB data for additional steps
+            desc = f"📊 [{self.grib.model['name']}] ({self.name}) Decoding GRIB messages"
+
+            if ds is None:
+                ds = grib_to_dataset(grib_data, new_steps, progress_bar=self.grib.progress_bar, desc=desc)
+            else:
+                new_ds = grib_to_dataset(grib_data, new_steps, progress_bar=self.grib.progress_bar, desc=desc)
+                ds = xr.concat([ds, new_ds], dim='step', join='outer')
+                ds = ds.sortby('step')
+
+        print(f"✅ [{self.grib.model['name']}] ({self.name})"
+              f" Dataset loaded in {time.time() - start_time:.2f}s")
+
+        self._ds = ds
+
+    def download(self):
+        """Download GRIB files for this subset asynchronously."""
+        start_time = time.time()
+
+        # Get idx dataframe for this subset
+        df = self.idx
+
+        if self.grib.use_cache:
+
+            available_steps = set()
+
+            # get existing steps from NetCDF
+            if self.netcdf_file.exists():
+                with xr.open_dataset(self.netcdf_file, chunks={'step': 1}, decode_timedelta=False) as ds:
+                    ds = ds.sel(step=self.step)
+                    available_steps = set(ds.step.values)
+
+            # get existing steps from GRIB file
+            if self.grib_file.exists():
+                with open(self.grib_file, 'rb') as f:
+                    grib_data = f.read()
+                    if grib_data:
+                        available_steps.update(grib_steps(grib_data))
+
+            # filter available steps from idx dataframe
+            if available_steps:
+                df = df[~df['step'].isin(available_steps)]
+
+            if df.empty:
+                print(f'✔️ [{self.grib.model["name"]}] ({self.name})'
+                      f' All available GRIB messages have already been downloaded')
+                return 0
+
+        print(f"🎯 [{self.grib.model['name']}] ({self.name})"
+              f" Found {len(df)} new message{'s' if len(df) > 1 else ''}")
+        # Wait for a short period to avoid console prints interleaving
+        time.sleep(0.01)
+
+        desc = (f'📥 [{self.grib.model["name"]}] ({self.name})'
+                f' Downloading from GRIB files')
+
+        grib_data = self.grib.download_data(df, desc=desc)
+
+        print(f"✅ [{self.grib.model['name']}] ({self.name})"
+              f" Downloaded in {time.time() - start_time:.2f}s")
+
+        if self.grib.use_cache:
+            with open(self.grib_file, 'ab' if self.grib_file.exists() else 'wb') as f:
+                f.write(grib_data)
         else:
-            new_steps = grib_to_dataset(self._grib_data, desc=desc)
-            ds = xr.concat([ds, new_steps], dim='time', join='outer')
+            self._grib_data = grib_data
 
-        ds = ds.sortby('step')
-
-        print(f"✅ [{self.grib.model['name']}] {self.name} subset loaded in "
-              f"{time.time() - start_time:.2f}s")
-
-        return ds
+        return len(df)
 
     def clear_cache(self):
         """Clean cache files."""
         self.grib_file.unlink(missing_ok=True)
-        self.grib_ls.unlink(missing_ok=True)
 
-    def to_nc(self, zlib=False, complevel=1):
+    def to_netcdf(self, encoding=None, zlib=False, complevel=1):
         """Save dataset to NetCDF file with uint16 encoding."""
+        print(f"💾 [{self.grib.model['name']}] ({self.name})"
+              f" Saving NetCDF file: {self.netcdf_file.as_uri()}")
 
-        start_time = time.time()
-        print(f"💾 [{self.grib.model['name']}] Saving {self.name} Netcdf file to: "
-              f"{self.nc_file.as_uri()}")
-
-        if self.nc_file.exists() and not self.new_idx_files:
-            print(f"NetCDF file already exists and up to date: {self.nc_file}")
-            return
-
-        with open(self.nc_ls, 'a', encoding='utf-8') as f:
-            f.write('\n'.join(self.new_idx_files))
+        # Check existing NetCDF file
+        if self.netcdf_file.exists():
+            with xr.open_dataset(self.netcdf_file, chunks={'step': 1}, decode_timedelta=False) as ds:
+                steps = set(ds.step.values)
+                if not steps.difference(self.step):
+                    print(f"✅ {self.grib.model['name']}] ({self.name})"
+                          f" NetCDF file already exists and up to date")
+                    return
 
         ds = self.ds
 
-        # Calculate uint16 encoding for each variable
-        encoding = {}
-        uint16_max = 65534  # 2^16 - 2 (exclude 0 for _FillValue)
+        start_time = time.time()
 
-        for var in ds.data_vars:
-            data = ds[var].values
-            valid_data = data[~np.isnan(data)]
+        if encoding is None:
+            # Calculate uint16 encoding for each variable
+            encoding = {}
+            uint16_max = 65534  # 2^16 - 2 (exclude 0 for _FillValue)
 
-            if len(valid_data) > 0:
-                data_min = float(valid_data.min())
-                data_max = float(valid_data.max())
+            for var in ds.data_vars:
+                data = ds[var].values
+                valid_data = data[~np.isnan(data)]
 
-                # Calculate scale and offset for uint16 (1-65535 range)
-                scale = (data_max - data_min) / uint16_max if data_max != data_min else 1.0
-                offset = data_min - scale  # Adjust so min maps to 1, not 0
+                if len(valid_data) > 0:
+                    data_min = float(valid_data.min())
+                    data_max = float(valid_data.max())
 
-                encoding[var] = {
-                    'dtype': 'uint16',
-                    'scale_factor': scale,
-                    'add_offset': offset,
-                    '_FillValue': 0,
-                    'zlib': zlib,
-                    'complevel': complevel
-                }
-            else:
-                # Fallback for variables with all NaN
-                encoding[var] = {'dtype': 'float32', '_FillValue': np.nan,
-                                 'zlib': zlib, 'complevel': complevel}
+                    # Calculate scale and offset for uint16 (1-65535 range)
+                    scale = (data_max - data_min) / uint16_max if data_max != data_min else 1.0
+                    offset = data_min - scale  # Adjust so min maps to 1, not 0
 
-        print(f"✅ [{self.grib.model['name']}] {self.name} Netcdf file encoding computed in "
-              f"{time.time() - start_time:.2f}s")
-        ds.to_netcdf(self.nc_file, encoding=encoding)
+                    encoding[var] = {
+                        'dtype': 'uint16',
+                        'scale_factor': scale,
+                        'add_offset': offset,
+                        '_FillValue': 0,
+                        'zlib': zlib,
+                        'complevel': complevel
+                    }
+                else:
+                    # Fallback for variables with all NaN
+                    encoding[var] = {'dtype': 'float32', '_FillValue': np.nan,
+                                     'zlib': zlib, 'complevel': complevel}
 
-        print(f"✅ [{self.grib.model['name']}] {self.name} Netcdf file saved in "
-              f"{time.time() - start_time:.2f}s")
+        print(f"✅ [{self.grib.model['name']}] ({self.name})"
+              f" NetCDF encoding computed in {time.time() - start_time:.2f}s")
 
-    def to_grib_file(self):
-        """Save GRIB file."""
-        if not self._grib_data:
-            print(f"❌  [{self.grib.model['name']}] No GRIB data to save for {self.name} subset")
-            return
+        ds.to_netcdf(self.netcdf_file, encoding=encoding)
 
-        with open(self.grib_file, 'ab') as f:
-            f.write(self._grib_data)
-
-        with open(self.grib_ls, 'a', encoding='utf-8') as f:
-            f.write('\n'.join(self.new_idx_files))
-
-        print(f"💾 [{self.grib.model['name']}] {self.name} GRIB file saved: "
-              f"{self.grib_file.as_uri()}")
+        print(f"✅ [{self.grib.model['name']}] ({self.name})"
+              f" Netcdf file saved in {time.time() - start_time:.2f}s")
 
 
 class Grib:
     """Main class for GRIB data operations."""
 
     def __init__(self, timestamp=None, date=None, model='gfswave', data_path=None,
-                 max_concurrent=100, use_cache=True):
+                 max_concurrent=100, use_cache=True, progress_bar=True):
         """Initialize Grib instance."""
         self.model_name = model
         self.model = MODELS[model].copy()
         self.model['name'] = model
         self.max_concurrent = max_concurrent
         self.use_cache = use_cache
+        self.progress_bar = progress_bar
         self._idx_files = None
         self._idx = None
-        self._steps = None
         self._step = None
+        self._current_step = None
+        self._subsets = {}
 
         # Initialize data_path
         if data_path is None:
@@ -311,13 +331,14 @@ class Grib:
         else:
             self.data_path = Path(data_path)
 
-        # Initialize time and find forecast
+        # Initialize timestamp
         timestamp = (pd.Timestamp(timestamp) if timestamp is not None
-                     else pd.Timestamp.utcnow())
+                     else pd.Timestamp.utcnow().as_unit('s'))
         self.timestamp = timestamp
 
-        print(f"🚀 [{model}] Initializing Grib for product "
-              f"{self.model['product']} at {self.timestamp.strftime('%Y%m%d-%Hh')} UTC")
+        print(f"🚀 [{model}]"
+              f" Initializing Grib for product"
+              f" {self.model['product']} at {self.timestamp.strftime('%Y%m%d-%Hh')} UTC")
 
         if date is None:
             self.date = timestamp.floor('6h')
@@ -326,19 +347,50 @@ class Grib:
             self.date = pd.Timestamp(date).floor('6h')
 
         # Initialize forecast data folder
-        self.folder_path.mkdir(parents=True, exist_ok=True)
-        print(f"📁 [{model}] Data folder: {self.folder_path.as_uri()}")
+        if self.use_cache:
+            self.folder_path.mkdir(parents=True, exist_ok=True)
+            print(f"📁 [{model}] Data folder: {self.folder_path.as_uri()}")
 
-        self._subsets = {}
-        if 'subsets' in self.model:
-            for name, config in self.model['subsets'].items():
-                self._subsets[name] = GribSubset(name, config, self)
+    def __str__(self):
+        return f"Grib['{self.model['name']}']"
 
-    def __getitem__(self, key):
-        """Access subset."""
-        if key in self._subsets:
-            return self._subsets[key]
-        raise KeyError(f"Subset '{key}' not found")
+    def __getitem__(self, keys):
+        """Get an existing subset of create a new one from keys"""
+        _args = ()
+        if isinstance(keys, str):
+            if hasattr(self, keys):
+                return getattr(self, keys)
+            name = keys
+        else:
+            name = keys[0]
+            _args = keys[1:]
+        if not _args:
+            if name in self._subsets:
+                return self._subsets[name]
+            if name in self.model['subsets']:
+                subset = self.model['subsets'][name]
+                if isinstance(subset, tuple):
+                    return GribSubset(name, self, self.model['subsets'][name][0], *subset[1:])
+                return GribSubset(name, self, self.model['subsets'][name])
+            raise KeyError(f"'{name}' not found in {self}")
+        if name in self._subsets:
+            return self._subsets[name][*_args]
+        if name in self.model['subsets']:
+            subset = self.model['subsets'][name]
+            if isinstance(subset, tuple):
+                return GribSubset(name, self, self.model['subsets'][name][0], *_args)
+            return GribSubset(name, self, self.model['subsets'][name], *_args)
+        raise KeyError(f"'{name}' not found in {self}")
+
+    def __iter__(self):
+        # First iterate on model subsets keys
+        keys = self.model['subsets'].keys()
+        for key in keys:
+            yield key
+        # Then iterate on existing subsets keys
+        for key in self._subsets.keys():
+            if key not in keys:
+                yield key
 
     @property
     def folder_path(self):
@@ -357,17 +409,17 @@ class Grib:
         while not idx_files and retry_count <= max_retry:
             idx_files = self.idx_files
             if not idx_files:
-                print(f"❌ [{self.model['name']}] Grib files not found: "
-                      f"{self.date.strftime('%Y%m%d-%Hh')}")
+                print(f"❌ [{self.model['name']}]"
+                      f" Grib files not found: {self.date.strftime('%Y%m%d-%Hh')}")
                 self.date -= pd.Timedelta(6, 'h')
                 self._idx_files = None
             retry_count += 1
         if idx_files:
-            print(f"✅ [{self.model['name']}] Grib files found "
-                  f"({len(idx_files)}): {self.date.strftime('%Y%m%d-%Hh')}")
+            print(f"✅ [{self.model['name']}]"
+                  f" Grib files found ({len(idx_files)}): {self.date.strftime('%Y%m%d-%Hh')}")
         else:
-            print(f"⚠️ [{self.model['name']}] No files found after "
-                  f"{max_retry} attempts for {self.model['name']}")
+            print(f"⚠️ [{self.model['name']}]"
+                  f" No files found after {max_retry} attempts for {self.model['name']}")
             return []
         return self.idx_files
 
@@ -408,42 +460,42 @@ class Grib:
         return self._idx
 
     @property
-    def steps(self):
-        """Get sorted array of available steps."""
-        if self._steps is None:
-            self._steps = np.unique(self.idx['step'].values)
-        return self._steps
-
-    @property
     def step(self):
-        """Get the step at timestamp"""
+        """Get sorted array of available steps."""
         if self._step is None:
-            h = int((self.timestamp - self.date).round('1h') / pd.Timedelta('1h'))
-            self._step = self.steps[np.abs((self.steps - h)).argmin()]
+            self._step = np.unique(self.idx['step'].values)
         return self._step
 
-    def download(self, clear_cache=False):
+    @property
+    def current_step(self):
+        """Get the last step before timestamp"""
+        if self._current_step is None:
+            h = int((self.timestamp - self.date).round('1h') / pd.Timedelta('1h'))
+            self._current_step = self.step[np.searchsorted(self.step, h)]
+        return self._current_step
+
+    def download(self):
         """Download all subsets."""
-        for subset in self._subsets.values():
-            subset.download(clear_cache)
+        for subset in self:
+            self[subset].download()
 
-    def download_data(self, df, progress_bar=True, desc=None):
-        return asyncio.run(self._download_data(df, progress_bar, desc))
+    def download_data(self, df, desc=None):
+        """Apply async download of subsets data defined in df"""
+        return asyncio.run(self._download_data(df, desc))
 
-    def to_nc(self):
+    def load(self):
+        for subset in self:
+            self[subset].load_dataset()
+
+    def to_netcdf(self):
         """Save each subset dataset to separate NetCDF files."""
-        for subset in self._subsets.values():
-            subset.to_nc()
-
-    def to_grib_file(self):
-        """Save each subset dataset to separate GRIB files."""
-        for subset in self._subsets.values():
-            subset.to_grib_file()
+        for subset in self:
+            self[subset].to_netcdf()
 
     def clear_cache(self):
         """Clean cache files."""
-        for subset in self._subsets.values():
-            subset.clear_cache()
+        for subset in self.model['subsets'].keys():
+            self[subset].clear_cache()
 
     def get_file_url(self, idx_file):
         """Get full URL for file."""
@@ -500,6 +552,9 @@ class Grib:
             df['message_id'] = df['message_id'].astype(int)
             df['start_byte'] = df['start_byte'].astype(int)
             df['end_byte'] = df['start_byte'].shift(-1) - 1
+            df['_length'] = df['end_byte'] - df['start_byte'] + 1
+            df['end_byte'] = df['end_byte'].fillna(-1).astype(int)
+            df['_length'] = df['_length'].fillna(-1).astype(int)
             df.loc[df['step'] == 'anl', 'step'] = '0'
             df['step'] = df['step'].str.split(' ').str[0]
 
@@ -521,7 +576,7 @@ class Grib:
                 headers = get_headers(**idx_data.to_dict())
                 tasks.append(download_messages(session, idx_data['url'], headers, partitions_id))
 
-            if progress_bar:
+            if self.progress_bar:
                 if desc is None:
                     desc = f'📥 [{self.model["name"]}] Downloading GRIB files'
                 with tqdm(total=len(df), desc=desc) as pbar:
@@ -542,17 +597,33 @@ if __name__ == '__main__':
     import argparse
 
     parser = argparse.ArgumentParser(description='Download and process GRIB data')
-    parser.add_argument('--model', default='gfswave', help='Model to use (default: gfswave)')
-    parser.add_argument('--timestamp', help='Timestamp for forecast (default: latest)')
-    parser.add_argument('--no-cache', default=False, action='store_true', help='Disable cache')
-    parser.add_argument('--save-nc', action='store_true', help='Save to NetCDF')
+
+    parser.add_argument('--model', default='gfswave',
+                        help='Model to use (default: gfswave)')
+    parser.add_argument('--timestamp',
+                        help='Timestamp for forecast (default: UTC now)')
+    parser.add_argument('--no-cache', default=False, action='store_true',
+                        help='Disable cache')
+    parser.add_argument('--save-nc', default=True, action='store_true',
+                        help='Save to NetCDF')
+    parser.add_argument('--progress-bar', default=True, action='store_true',
+                        help='Show progress bar while downloading or decoding GRIB data')
+    parser.add_argument('--clear-cache', default=False, action='store_true',
+                        help='Clear cache from GRIB files')
 
     args = parser.parse_args()
 
-    g = Grib(model=args.model, timestamp=args.timestamp)
-    g.download(clear_cache=args.no_cache)
+    g = Grib(
+        model=args.model,
+        timestamp=args.timestamp,
+        use_cache=not args.no_cache,
+        progress_bar=args.progress_bar
+    )
+
+    if args.clear_cache:
+        g.clear_cache()
+
+    g.download()
 
     if args.save_nc:
-        g.to_nc()
-
-    print(g['wind'].ds)
+        g.to_netcdf()
