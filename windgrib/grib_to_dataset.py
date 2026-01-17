@@ -128,7 +128,7 @@ def message_to_data_array(msg_bytes):
         return None
 
     var_name = get_var_name(msg)
-    vals = msg["values"].reshape(msg["Ny"], msg["Nx"])
+    vals = msg["values"].reshape(msg["Ny"], msg["Nx"]).astype(np.float32)
 
     # Handle missing values properly
     missing_value = msg.get("missingValue", None)
