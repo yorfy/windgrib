@@ -2,6 +2,8 @@
 
 Comparison of WindGrib and Herbie performance for downloading and processing GFS Wave wind data (209 forecast steps).
 
+**[📄 View benchmark script](../examples/benchmarks/benchmark_windgrib_vs_herbie.py)**
+
 ## Test Configuration
 
 - **Model**: GFS Wave (global.0p25)
@@ -40,9 +42,9 @@ total                                 36.01              5.58             105.21
 ## Key Advantages
 
 1. **Faster Initialization**: WindGrib's direct S3 index parsing is significantly faster than Herbie's approach
-2. **Asyncio-Based Downloads**: Uses asyncio for concurrent downloads (vs FastHerbie's multi-threading approach), providing 2.3x faster download times
-3. **Parallel GRIB Decoding**: Concurrent process-based GRIB message decoding (cfgrib doesn't support parallel reading on Windows), resulting in 2.6x faster loading
-4. **Incremental NetCDF Caching**: Smart incremental saving to NetCDF format provides 6.5x speedup on subsequent runs (vs 1.4x for Herbie)
+2. **Asyncio-Based Downloads**: Uses asyncio for concurrent downloads (vs FastHerbie's multi-threading approach), providing 2.3x faster download times - [See technical details](technical_guide.md#performance-optimizations)
+3. **Parallel GRIB Decoding**: Concurrent process-based GRIB message decoding (cfgrib doesn't support parallel reading on Windows), resulting in 2.6x faster loading - [See technical details](technical_guide.md#performance-optimizations)
+4. **Incremental NetCDF Caching**: Smart incremental saving to NetCDF format provides 6.5x speedup on subsequent runs (vs 1.4x for Herbie) - [See technical details](technical_guide.md#performance-optimizations)
 
 ---
 *Benchmark date: 2026-01-17*

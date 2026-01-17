@@ -45,7 +45,7 @@ print(f"Average speed: {wind_speed.mean().values:.2f} m/s")
 
 For complete documentation, examples, and advanced usage:
 
-**[📖 View Full Documentation](https://github.com/yorfy/windgrib/tree/master/docs)**
+**[📖 View Full Documentation](https://github.com/yorfy/windgrib/blob/master/docs/index.md)**
 
 - [Usage Examples](https://github.com/yorfy/windgrib/tree/master/docs/usage_examples.md) - Practical examples with working code
 - [Technical Guide](https://github.com/yorfy/windgrib/tree/master/docs/technical_guide.md) - Implementation details for developers
