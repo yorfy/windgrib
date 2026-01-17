@@ -124,9 +124,7 @@ class GribSubset:
         - tuple: (['var1', 'var2'], step, filter_keys) -> variables + step + filter_keys
         - tuple: (['var1', 'var2'], filter_keys) -> variables + filter_keys
         """
-        if isinstance(items, str):
-            items = [items]
-        if isinstance(items, list):
+        if isinstance(items, (list, str)):
             return GribSubset(name, grib, items)
         if isinstance(items, tuple):
             _args = [arg for arg in items if not isinstance(arg, dict)]
@@ -140,6 +138,8 @@ class GribSubset:
     def __init__(self, name, grib_instance, var=None, step=None, **filter_keys):
         """Initialize subset with name, configuration and parent grib instance."""
         self.name = name
+        if isinstance(var, str):
+            var = [var]
         self.var = var
         self.filter_keys = filter_keys
         self.grib = grib_instance
