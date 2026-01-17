@@ -13,7 +13,7 @@ This section presents concrete examples showing different usage modes of WindGri
 
 This example shows how to download GRIB data and access it in a basic way.
 
-**Script:** [download_grib.py](../examples/download_grib.py)
+**Script:** [download_grib.py](../examples/1%23download_grib.py)
 
 **Key Features:**
 - Uses caching to avoid redundant downloads
@@ -26,29 +26,27 @@ using cache and saving data to netcdf format to speedup further data reading"""
 
 from windgrib import Grib
 
-# Create a GRIB instance for the GFS Wave model
-grib = Grib(model='gfswave')
+if __name__ == '__main__':
+    # Create a GRIB instance for the GFS Wave model
+    print("\n====Initiating Grib instance and looking for forecast data====")
+    gb = Grib(model='ecmwf_ifs')
+    # gb = Grib()
 
-# Download the data
-print("Downloading GFS Wave data...")
-grib.download(use_cache=True)
-# use_cache=True is the default option
-# But you can use use_cache=False to force downloading ignoring cache files
+    # Download the data
+    print("\n====Downloading GFS Wave data...====")
+    gb.download(clear_cache=True)
+    # clear_cache=False is the default option
+    # But you can use clear_cache=True to force downloading ignoring cache files
 
-# Access wind data
-wind_data = grib['wind']
+    # save to grib file for further analysis of downloaded data
+    gb.to_grib_file()
 
-# Display basic information
-print(f"Available variables: {list(wind_data.data_vars)}")
-print(f"Dimensions: {dict(wind_data.sizes)}")
-print(f"Time period: {wind_data.time.values}")
+    # Access wind data
+    wind_data = gb['wind']
+    print(f"====Loaded dataset====\n{wind_data}")
 
-# Access specific subset
-print(f"U data shape: {wind_data.u.shape}")
-print(f"V data shape: {wind_data.v.shape}")
-
-# save to netcdf file to speedup further data reading
-grib.to_nc()
+    # save to netcdf file to speedup further data reading
+    gb.to_netcdf()
 ```
 
 ## Data Visualization
@@ -65,23 +63,24 @@ from windgrib import Grib
 import numpy as np
 import matplotlib.pyplot as plt
 
-    
-# Load data
-print("Loading data...")
-grib = Grib(model='gfswave')
-grib.download()
-wind_data = grib['wind']
+if __name__ == '__main__':
+    # Load data
+    print("Loading data...")
+    gb = Grib(model='gfswave')
+    gb.download()
+    wind_data = gb['wind'].ds
 
-# Calculate wind speed
-print("Calculating wind speed...")
-wind_speed = np.sqrt(wind_data.u**2 + wind_data.v**2)
+    # Calculate wind speed
+    print("Calculating wind speed...")
+    wind_speed = 1.94384 * np.sqrt(wind_data.u ** 2 + wind_data.v ** 2)
+    wind_speed.attrs['units'] = 'knots'
 
-# Plot Wind speed - First time step
-wind_speed.isel(step=0).plot(cmap='viridis')
-plt.tight_layout()
+    # Plot Wind speed - First time step
+    wind_speed.isel(step=0).plot(cmap='viridis')
+    plt.tight_layout()
 
-# Save image
-plt.savefig('wind_visualization.png', dpi=300, bbox_inches='tight')
+    # Save image
+    plt.savefig('../docs/images/wind_visualization.png', dpi=300, bbox_inches='tight')
 ```
 
 ### Generated Visualizations
@@ -104,83 +103,57 @@ This example shows how to compare data between different weather models (ECMWF v
 
 ```python
 """comparison of wind speed forecast from ECMWF and GFS"""
-
-import numpy as np
-import pandas as pd
 from matplotlib import pyplot as plt
-
 from windgrib import Grib
 
-# ECMWF download
-print("=== ECMWF download ===")
-grib_ecmwf = Grib(model='ecmwf_ifs')
-grib_ecmwf.download()
 
-# GFS download
-print("\n=== GFS download ===")
-grib_gfs = Grib()
-grib_gfs.download()
+def wind_speed(name, u, v):
+    """calculate wind speed in knots from u and v components"""
+    speed = 1.94384 *  (u ** 2 + v ** 2) ** 0.5
+    speed.attrs['units'] = 'knots'
+    speed.attrs['long_name'] = f'{name} Wind Speed'
+    return speed
 
-# Get datasets
-ecmwf_wind_ds = grib_ecmwf['wind']
-ecmwf_land_ds = grib_ecmwf['land']
-gfs_ds = grib_gfs['wind']
 
-# Convert GFS longitude from 0-360 to -180-180
-if 'longitude' in gfs_ds.coords:
-    gfs_ds = gfs_ds.assign_coords(longitude=((gfs_ds.longitude + 180) % 360) - 180)
-    gfs_ds = gfs_ds.sortby('longitude')
+if __name__ == '__main__':
+    print("\n=== WindGrib Example: GFS/ECMWF Wind Speed Comparison ===")
 
-print(f"\nECMWF wind variables: {list(ecmwf_wind_ds.data_vars)}")
-print(f"ECMWF wind dimensions: {dict(ecmwf_wind_ds.sizes)}")
-if ecmwf_land_ds:
-    print(f"ECMWF land variables: {list(ecmwf_land_ds.data_vars)}")
-print(f"\nGFS loaded variables: {list(gfs_ds.data_vars)}")
-print(f"GFS dimensions: {dict(gfs_ds.sizes)}")
+    print("\n=== GFS ===")
+    gfs_gb = Grib()
+    # Get wind subset only for current step
+    gfs_gbs = gfs_gb['wind'][gfs_gb.current_step]
+    gfs_gbs.download()
+    gfs_wind = gfs_gbs.ds
+    # Convert longitude from (0, 360) to (-180, 180)
+    gfs_wind = gfs_wind.assign_coords(longitude=((gfs_wind.longitude + 180) % 360) - 180)
+    gfs_wind = gfs_wind.sortby('longitude')
 
-# Wind speed comparison
-print("\n=== Wind Speed Comparison ===")
+    print("\n=== ECMWF ===")
+    ecmwf_gb = Grib(model='ecmwf_ifs')
+    # Get wind subset only for current step
+    ecmwf_gbs = ecmwf_gb['wind'][ecmwf_gb.current_step]
+    ecmwf_gbs.download()
+    ecmwf_wind = ecmwf_gbs.ds
+    # Apply ocean mask
+    ecmwf_gb['land'].download()
+    ecmwf_land = ecmwf_gb['land'].ds
+    ocean_mask = ecmwf_land.lsm < 0.5
+    ecmwf_wind = ecmwf_wind.where(ocean_mask.values)
 
-# Find common valid times
-ecmwf_valid_times = pd.to_datetime(ecmwf_wind_ds.valid_time.values)
-gfs_valid_times = pd.to_datetime(gfs_ds.valid_time.values)
-common_times = ecmwf_valid_times.intersection(gfs_valid_times)
-current_time = pd.Timestamp.utcnow().tz_localize(None)
-closest_common_idx = np.abs(common_times - current_time).argmin()
-closest_common_time = common_times[closest_common_idx]
-ecmwf_step = list(ecmwf_valid_times).index(closest_common_time)
-gfs_step = list(gfs_valid_times).index(closest_common_time)
-print(f"Using common time closest to now ({current_time}):")
-print(f"Common time: {closest_common_time}")
-print(f"ECMWF step: {ecmwf_step}, GFS step: {gfs_step}")
+    print("\n=== Wind Speed Comparison ===")
+    # Calculate wind speed and convert m/s to knots
+    gfs_wind_speed = wind_speed('GFS', gfs_wind.u, gfs_wind.v)
+    ecmwf_wind_speed = wind_speed('ECMWF', ecmwf_wind.u10, ecmwf_wind.v10)
 
-# Calculate wind speed and convert m/s to knots
-ecmwf_wind_speed = 1.94384 * (ecmwf_wind_ds.u ** 2 + ecmwf_wind_ds.v ** 2) ** 0.5
-ecmwf_wind_speed.attrs['units'] = 'knots'
-ecmwf_wind_speed.attrs['long_name'] = 'Wind Speed'
-
-gfs_wind_speed = 1.94384 * (gfs_ds.u ** 2 + gfs_ds.v ** 2) ** 0.5
-gfs_wind_speed.attrs['units'] = 'knots'
-gfs_wind_speed.attrs['long_name'] = 'Wind Speed'
-
-# Apply ocean mask to ECMWF wind speed
-lsm = ecmwf_land_ds.lsm
-ocean_mask = lsm < 0.5
-ecmwf_wind_speed = ecmwf_wind_speed.where(ocean_mask)
-print("Applied ocean mask to ECMWF wind speed")
-
-# Plot comparison
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
-
-ecmwf_wind_speed.isel(step=ecmwf_step).plot(ax=ax1, cmap='viridis')
-ax1.set_title(f'ECMWF Wind Speed (Ocean Only)\n{ecmwf_valid_times[ecmwf_step]}')
-
-gfs_wind_speed.isel(step=gfs_step).plot(ax=ax2, cmap='viridis')
-ax2.set_title(f'GFS Wind Speed\n{gfs_valid_times[gfs_step]}')
-plt.tight_layout()
-plt.savefig('wind_speed_comparison.png', dpi=300, bbox_inches='tight')
-
-print("\nComparison plot completed with ocean masking! (Wind speeds in knots)")
+    # Plot comparison
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
+    gfs_wind_speed.plot(ax=ax1, cmap='viridis', vmin=0, vmax=40)
+    ecmwf_wind_speed.plot(ax=ax2, cmap='viridis', vmin=0, vmax=40)
+    fig.suptitle(f"GFS and ECMWF wind speed comparison at {gfs_gb.timestamp}")
+    plt.tight_layout()
+    plt.savefig('../docs/images/wind_speed_comparison.png', dpi=300, bbox_inches='tight')
+    print("💾 Wind speed comparison plot saved to wind_speed_comparison.png")
+    plt.show()
 ```
 
 ### Generated Visualizations
@@ -215,37 +188,35 @@ from windgrib.grib import MODELS, Grib
 
 # Configuration for GFS atmospheric with surface temperature subset
 MODELS['gfs_atmos_temperature'] = {
-    'product': '.pgrb2.0p25', # start with . to prevent considering goessimpgrb2 product
+    'product': '.pgrb2.0p25',  # start with . to prevent considering goessimpgrb2 product
     'url': 'https://noaa-gfs-bdp-pds.s3.amazonaws.com/',
     'key': 'gfs.{date}/{h:02d}/atmos/',
     'subsets': {
-        'temperature': {
-            'variable': ['TMP'],
-            'layer': ['surface']
-        }
+        'temperature': (['TMP'], {'layer': ['surface']})
     },
     'ext': ''
 }
 
-print("=== WindGrib Example: GFS Atmospheric Data ===")
+if __name__ == '__main__':
+    print("=== WindGrib Example: GFS Atmospheric Data ===\n")
 
-print("1. Downloading latest available GFS atmospheric data...")
-grib = Grib(model='gfs_atmos_temperature')
-grib.download()
-print("Download completed")
+    print("1. Downloading latest available GFS atmospheric data...")
+    gb = Grib(model='gfs_atmos_temperature')
+    gb.download()
+    print("Download completed")
 
-print("\n2. Analyzing temperature data...")
-ds = grib['temperature']
-print(f"Available variables: {list(ds.data_vars)}")
-print(f"Dimensions: {list(ds.dims)}")
+    print("\n2. Analyzing temperature data...")
+    ds = gb['temperature'].ds
+    print(f"Available variables: {list(ds.data_vars)}")
+    print(f"Dimensions: {list(ds.dims)}")
 
-# Convert Kelvin to Celsius and plot temperature variation near Toulouse
-temp_celsius = ds.t - 273.15
-temp_celsius.attrs['units'] = '°C'
-temp_celsius.interp({'latitude':43.599998, 'longitude':1.43333}).plot()
-plt.suptitle("Temperature Variation near Toulouse")
-plt.savefig("temperature_variation_near_toulouse.png")
-print("Example completed")
+    # Convert Kelvin to Celsius and plot temperature variation near Toulouse
+    temp_celsius = ds.t - 273.15
+    temp_celsius.attrs['units'] = '°C'
+    temp_celsius.interp({'latitude': 43.599998, 'longitude': 1.43333}).plot()
+    plt.suptitle("Temperature Variation near Toulouse")
+    plt.savefig("../docs/images/temperature_variation_near_toulouse.png")
+    print("Example completed")
 ```
 
 ### Generated Visualizations

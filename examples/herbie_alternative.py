@@ -1,12 +1,10 @@
 """
 Alternative script using Fast Herbie and HerbieLatest to download GFS wind data
-Demonstrates equivalent functionality to WindGrib using Herbie's optimized methods
+Demonstrates equivalent functionality to WindGrib using Herbie's methods
 """
 import xarray
 from herbie import FastHerbie, HerbieLatest
 from tqdm.dask import TqdmCallback
-
-"""Download latest GFS wind data using Fast Herbie and HerbieLatest."""
 
 print("=== Using Herbie for GFS Wind Data ===")
 
@@ -32,7 +30,7 @@ FH = FastHerbie(
 # Download wind components (UGRD, VGRD) in one call
 print("3. Downloading wind components (UGRD, VGRD)...")
 
-grib_files = FH.download('UGRD|VGRD', verbose=True)
+grib_files = FH.download('UGRD|VGRD')
 
 print(f"3. Reading {len(grib_files)} GRIB files")
 

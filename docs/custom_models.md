@@ -73,11 +73,11 @@ MODELS['gfs_temp'] = {
 }
 
 # Use the new model
-grib = Grib(model='gfs_temp')
-grib.download()
+gb = Grib(model='gfs_temp')
+gb.download()
 
 # Access the data
-temp_data = grib['temperature']
+temp_data = gb['temperature'].ds
 print(f"Mean temperature: {temp_data.TMP.mean().values:.2f} K")
 ```
 
@@ -130,11 +130,11 @@ MODELS['advanced_model'] = {
 }
 
 # Using the advanced model
-grib = Grib(model='advanced_model')
-grib.download()
+gb = Grib(model='advanced_model')
+gb.download()
 
 # Variables are renamed according to var_mapping
-data = grib['surface_temperature']
+data = gb['surface_temperature'].ds
 print(f"Available variables: {list(data.data_vars)}")
 # Shows: ['temperature'] instead of ['TMP']
 ```
@@ -154,69 +154,71 @@ print(f"Available variables: {list(data.data_vars)}")
 from windgrib.grib import GribSubset
 import numpy as np
 
+
 class MyExtendedGribSubset(GribSubset):
-    """Extended class with additional functionality."""
-    
-    def calculate_thermal_indices(self):
-        """Calculate thermal indices from the data."""
-        ds = self.ds
-        
-        if ds is None:
-            return None
-        
-        results = {}
-        
-        # Example: Calculate simplified heat index
-        if 'temperature' in ds.data_vars and 'humidity' in ds.data_vars:
-            temp = ds.temperature
-            rh = ds.humidity
-            heat_index = temp + 0.01 * rh  # Simplified formula
-            results['heat_index'] = heat_index
-        
-        # Calculate extremes
-        for var_name in ds.data_vars:
-            results[f'{var_name}_max'] = ds[var_name].max()
-            results[f'{var_name}_min'] = ds[var_name].min()
-        
-        return results
-    
-    def analyze_trends(self):
-        """Analyze temporal trends."""
-        ds = self.ds
-        
-        if ds is None or 'step' not in ds.dims:
-            return None
-        
-        results = {}
-        
-        for var_name in ds.data_vars:
-            # Calculate linear trend
-            mean_series = ds[var_name].mean(dim=['latitude', 'longitude'])
-            
-            # Linear regression
-            x = np.arange(len(mean_series))
-            y = mean_series.values
-            A = np.vstack([x, np.ones(len(x))]).T
-            m, c = np.linalg.lstsq(A, y, rcond=None)[0]
-            
-            results[var_name] = {
-                'slope': m,
-                'intercept': c,
-                'trend': 'increasing' if m > 0 else 'decreasing' if m < 0 else 'stable'
-            }
-        
-        return results
+   """Extended class with additional functionality."""
+
+   def calculate_thermal_indices(self):
+      """Calculate thermal indices from the data."""
+      ds = self.ds
+
+      if ds is None:
+         return None
+
+      results = {}
+
+      # Example: Calculate simplified heat index
+      if 'temperature' in ds.data_vars and 'humidity' in ds.data_vars:
+         temp = ds.temperature
+         rh = ds.humidity
+         heat_index = temp + 0.01 * rh  # Simplified formula
+         results['heat_index'] = heat_index
+
+      # Calculate extremes
+      for var_name in ds.data_vars:
+         results[f'{var_name}_max'] = ds[var_name].max()
+         results[f'{var_name}_min'] = ds[var_name].min()
+
+      return results
+
+   def analyze_trends(self):
+      """Analyze temporal trends."""
+      ds = self.ds
+
+      if ds is None or 'step' not in ds.dims:
+         return None
+
+      results = {}
+
+      for var_name in ds.data_vars:
+         # Calculate linear trend
+         mean_series = ds[var_name].mean(dim=['latitude', 'longitude'])
+
+         # Linear regression
+         x = np.arange(len(mean_series))
+         y = mean_series.values
+         A = np.vstack([x, np.ones(len(x))]).T
+         m, c = np.linalg.lstsq(A, y, rcond=None)[0]
+
+         results[var_name] = {
+            'slope': m,
+            'intercept': c,
+            'trend': 'increasing' if m > 0 else 'decreasing' if m < 0 else 'stable'
+         }
+
+      return results
+
 
 # Using the extended class
-grib = Grib(model='gfswave')
-grib.download()
+gb = Grib(model='gfswave')
+gb.download()
 
 # Replace subset with our extended version
-wind_subset = grib._subsets['wind']
+wind_subset = gb['wind']
 extended_subset = MyExtendedGribSubset(
-    name='wind',
-    config=wind_subset.config,
-    grib_instance=grib
+   name='wind',
+   config=wind_subset.filter_keys,
+   grib_instance=gb
 )
 
 # Use new functionality
@@ -256,11 +258,11 @@ print("=== WindGrib Example: GFS Atmospheric Data ===\n")
 
 # 1. Initialization
 print("1. Initializing GFS atmospheric model...")
-grib = Grib(model='gfs_atmos')
+gb = Grib(model='gfs_atmos')
 
 print("2. Downloading data...")
 try:
-    grib.download(use_cache=False)  # Force download
+    gb.download()  # Use current API
     print("[OK] Download completed")
 except Exception as e:
     print(f"[ERROR] Download error: {e}")
@@ -270,7 +272,7 @@ except Exception as e:
 print("\n3. Analyzing temperature data...")
 
 try:
-    temp_data = grib['temperature']
+    temp_data = gb['temperature']
     print(f"Available variables: {list(temp_data.data_vars)}")
     
     # Convert Kelvin to Celsius
@@ -305,10 +307,10 @@ MODELS['gfs_precip'] = {
 }
 
 # Usage
-grib = Grib(model='gfs_precip')
-grib.download()
+gb = Grib(model='gfs_precip')
+gb.download()
 
-precip_data = grib['precipitation']
+precip_data = gb['precipitation'].ds
 print(f"Total precipitation: {precip_data.APCP.sum().values:.2f} kg/m²")
 ```
 
@@ -331,11 +333,11 @@ MODELS['gfs_levels'] = {
 }
 
 # Usage to calculate wind at 250 hPa
-grib = Grib(model='gfs_levels')
-grib.download()
+gb = Grib(model='gfs_levels')
+gb.download()
 
-u250 = grib['uwnd_250']
-v250 = grib['vwnd_250']
+u250 = gb['uwnd_250'].ds
+v250 = gb['vwnd_250'].ds
 wind_250 = np.sqrt(u250.UGRD**2 + v250.VGRD**2)
 print(f"Mean wind speed at 250 hPa: {wind_250.mean().values:.2f} m/s")
 ```
@@ -348,110 +350,112 @@ import pandas as pd
 from matplotlib import pyplot as plt
 from windgrib import Grib
 
+
 def ecmf_gfs_wind_speed_comparison():
-    # Comparison of wind speed forecast from ECMWF and GFS
+   # Comparison of wind speed forecast from ECMWF and GFS
 
-    # ECMWF download
-    print("=== ECMWF download ===\n")
-    grib_ecmwf = Grib(model='ecmwf_ifs')
-    grib_ecmwf.download(use_cache=False)
-    grib_ecmwf.to_nc()
+   # ECMWF download
+   print("=== ECMWF download ===\n")
+   grib_ecmwf = Grib(model='ecmwf_ifs')
+   grib_ecmwf.download()
+   grib_ecmwf.to_netcdf()
 
-    # GFS download
-    print("\n=== GFS download ===\n")
-    grib_gfs = Grib()
-    grib_gfs.download(use_cache=False)
-    grib_gfs.to_nc()
+   # GFS download
+   print("\n=== GFS download ===\n")
+   grib_gfs = Grib()
+   grib_gfs.download()
+   grib_gfs.to_netcdf()
 
-    # Get datasets
-    ecmwf_wind_ds = grib_ecmwf['wind']
-    ecmwf_land_ds = grib_ecmwf['land']
-    gfs_ds = grib_gfs['wind']
+   # Get datasets
+   ecmwf_wind_ds = grib_ecmwf['wind'].ds
+   ecmwf_land_ds = grib_ecmwf['land'].ds
+   gfs_ds = grib_gfs['wind'].ds
 
-    # Convert GFS longitude from 0-360 to -180-180
-    if 'longitude' in gfs_ds.coords:
-        gfs_ds = gfs_ds.assign_coords(longitude=((gfs_ds.longitude + 180) % 360) - 180)
-        gfs_ds = gfs_ds.sortby('longitude')
+   # Convert GFS longitude from 0-360 to -180-180
+   if 'longitude' in gfs_ds.coords:
+      gfs_ds = gfs_ds.assign_coords(longitude=((gfs_ds.longitude + 180) % 360) - 180)
+      gfs_ds = gfs_ds.sortby('longitude')
 
-    print(f"\nECMWF wind variables: {list(ecmwf_wind_ds.data_vars)}")
-    print(f"ECMWF wind dimensions: {dict(ecmwf_wind_ds.sizes)}")
-    if ecmwf_land_ds:
-        print(f"ECMWF land variables: {list(ecmwf_land_ds.data_vars)}")
-    print(f"\nGFS loaded variables: {list(gfs_ds.data_vars)}")
-    print(f"GFS dimensions: {dict(gfs_ds.sizes)}")
+   print(f"\nECMWF wind variables: {list(ecmwf_wind_ds.data_vars)}")
+   print(f"ECMWF wind dimensions: {dict(ecmwf_wind_ds.sizes)}")
+   if ecmwf_land_ds:
+      print(f"ECMWF land variables: {list(ecmwf_land_ds.data_vars)}")
+   print(f"\nGFS loaded variables: {list(gfs_ds.data_vars)}")
+   print(f"GFS dimensions: {dict(gfs_ds.sizes)}")
 
-    # Wind speed comparison
-    print("\n=== Wind Speed Comparison ===\n")
+   # Wind speed comparison
+   print("\n=== Wind Speed Comparison ===\n")
 
-    # Find common valid times
-    ecmwf_valid_times = pd.to_datetime(ecmwf_wind_ds.valid_time.values)
-    gfs_valid_times = pd.to_datetime(gfs_ds.valid_time.values)
-    common_times = ecmwf_valid_times.intersection(gfs_valid_times)
+   # Find common valid times
+   ecmwf_valid_times = pd.to_datetime(ecmwf_wind_ds.valid_time.values)
+   gfs_valid_times = pd.to_datetime(gfs_ds.valid_time.values)
+   common_times = ecmwf_valid_times.intersection(gfs_valid_times)
 
-    if len(common_times) == 0:
-        print("No common valid times found between ECMWF and GFS")
-        current_time = pd.Timestamp.now()
-        ecmwf_closest_idx = np.abs(ecmwf_valid_times - current_time).argmin()
-        gfs_closest_idx = np.abs(gfs_valid_times - current_time).argmin()
-        ecmwf_time = ecmwf_valid_times[ecmwf_closest_idx]
-        gfs_time = gfs_valid_times[gfs_closest_idx]
-        print(f"Using closest times to now ({current_time}):")
-        print(f"ECMWF: {ecmwf_time} (step={ecmwf_closest_idx})")
-        print(f"GFS: {gfs_time} (step={gfs_closest_idx})")
-        ecmwf_step = ecmwf_closest_idx
-        gfs_step = gfs_closest_idx
-    else:
-        current_time = pd.Timestamp.now()
-        closest_common_idx = np.abs(common_times - current_time).argmin()
-        closest_common_time = common_times[closest_common_idx]
-        ecmwf_step = list(ecmwf_valid_times).index(closest_common_time)
-        gfs_step = list(gfs_valid_times).index(closest_common_time)
-        print(f"Using common time closest to now ({current_time}):")
-        print(f"Common time: {closest_common_time}")
-        print(f"ECMWF step: {ecmwf_step}, GFS step: {gfs_step}")
+   if len(common_times) == 0:
+      print("No common valid times found between ECMWF and GFS")
+      current_time = pd.Timestamp.now()
+      ecmwf_closest_idx = np.abs(ecmwf_valid_times - current_time).argmin()
+      gfs_closest_idx = np.abs(gfs_valid_times - current_time).argmin()
+      ecmwf_time = ecmwf_valid_times[ecmwf_closest_idx]
+      gfs_time = gfs_valid_times[gfs_closest_idx]
+      print(f"Using closest times to now ({current_time}):")
+      print(f"ECMWF: {ecmwf_time} (step={ecmwf_closest_idx})")
+      print(f"GFS: {gfs_time} (step={gfs_closest_idx})")
+      ecmwf_step = ecmwf_closest_idx
+      gfs_step = gfs_closest_idx
+   else:
+      current_time = pd.Timestamp.now()
+      closest_common_idx = np.abs(common_times - current_time).argmin()
+      closest_common_time = common_times[closest_common_idx]
+      ecmwf_step = list(ecmwf_valid_times).index(closest_common_time)
+      gfs_step = list(gfs_valid_times).index(closest_common_time)
+      print(f"Using common time closest to now ({current_time}):")
+      print(f"Common time: {closest_common_time}")
+      print(f"ECMWF step: {ecmwf_step}, GFS step: {gfs_step}")
 
-    # Calculate wind speed in m/s then convert to knots
-    ecmwf_speed = (ecmwf_wind_ds.u ** 2 + ecmwf_wind_ds.v ** 2) ** 0.5
-    ecmwf_speed_knots = ecmwf_speed * 1.94384  # Convert m/s to knots
-    ecmwf_speed_knots.attrs['units'] = 'knots'
-    ecmwf_speed_knots.attrs['long_name'] = 'Wind Speed'
+   # Calculate wind speed in m/s then convert to knots
+   ecmwf_speed = (ecmwf_wind_ds.u ** 2 + ecmwf_wind_ds.v ** 2) ** 0.5
+   ecmwf_speed_knots = ecmwf_speed * 1.94384  # Convert m/s to knots
+   ecmwf_speed_knots.attrs['units'] = 'knots'
+   ecmwf_speed_knots.attrs['long_name'] = 'Wind Speed'
 
-    if 'v' in gfs_ds.data_vars:
-        gfs_speed = (gfs_ds.u ** 2 + gfs_ds.v ** 2) ** 0.5
-    else:
-        print("Warning: GFS missing v component, using only u component")
-        gfs_speed = abs(gfs_ds.u)
-    gfs_speed_knots = gfs_speed * 1.94384  # Convert m/s to knots
-    gfs_speed_knots.attrs['units'] = 'knots'
-    gfs_speed_knots.attrs['long_name'] = 'Wind Speed'
+   if 'v' in gfs_ds.data_vars:
+      gfs_speed = (gfs_ds.u ** 2 + gfs_ds.v ** 2) ** 0.5
+   else:
+      print("Warning: GFS missing v component, using only u component")
+      gfs_speed = abs(gfs_ds.u)
+   gfs_speed_knots = gfs_speed * 1.94384  # Convert m/s to knots
+   gfs_speed_knots.attrs['units'] = 'knots'
+   gfs_speed_knots.attrs['long_name'] = 'Wind Speed'
 
-    # Apply ocean mask to ECMWF wind speed
-    if ecmwf_land_ds and 'lsm' in ecmwf_land_ds.data_vars:
-        lsm = ecmwf_land_ds.lsm
-        ocean_mask = lsm < 0.5
-        ecmwf_speed_masked = ecmwf_speed_knots.where(ocean_mask)
-        print("Applied ocean mask to ECMWF wind speed")
-    else:
-        ecmwf_speed_masked = ecmwf_speed_knots
-        print("No ocean mask applied - LSM not available")
+   # Apply ocean mask to ECMWF wind speed
+   if ecmwf_land_ds and 'lsm' in ecmwf_land_ds.data_vars:
+      lsm = ecmwf_land_ds.lsm
+      ocean_mask = lsm < 0.5
+      ecmwf_speed_masked = ecmwf_speed_knots.where(ocean_mask)
+      print("Applied ocean mask to ECMWF wind speed")
+   else:
+      ecmwf_speed_masked = ecmwf_speed_knots
+      print("No ocean mask applied - LSM not available")
 
-    # Plot comparison
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+   # Plot comparison
+   fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
 
-    ecmwf_speed_masked.isel(step=ecmwf_step).plot(ax=ax1, cmap='viridis')
-    ax1.set_title(f'ECMWF Wind Speed (Ocean Only)\n{ecmwf_valid_times[ecmwf_step]}')
+   ecmwf_speed_masked.isel(step=ecmwf_step).plot(ax=ax1, cmap='viridis')
+   ax1.set_title(f'ECMWF Wind Speed (Ocean Only)\n{ecmwf_valid_times[ecmwf_step]}')
 
-    gfs_speed_knots.isel(step=gfs_step).plot(ax=ax2, cmap='viridis')
-    ax2.set_title(f'GFS Wind Speed\n{gfs_valid_times[gfs_step]}')
-    plt.tight_layout()
-    plt.savefig('docs/images/ecmwf_gfs_comparison.png', dpi=300, bbox_inches='tight')
-    plt.show()
+   gfs_speed_knots.isel(step=gfs_step).plot(ax=ax2, cmap='viridis')
+   ax2.set_title(f'GFS Wind Speed\n{gfs_valid_times[gfs_step]}')
+   plt.tight_layout()
+   plt.savefig('docs/images/ecmwf_gfs_comparison.png', dpi=300, bbox_inches='tight')
+   plt.show()
 
-    print("\nComparison plot completed with ocean masking! (Wind speeds in knots)")
-    print("Plot saved to: docs/images/ecmwf_gfs_comparison.png")
+   print("\nComparison plot completed with ocean masking! (Wind speeds in knots)")
+   print("Plot saved to: docs/images/ecmwf_gfs_comparison.png")
+
 
 if __name__ == '__main__':
-    ecmf_gfs_wind_speed_comparison()
+   ecmf_gfs_wind_speed_comparison()
 ```
 
 **Expected Output:**
@@ -537,9 +541,9 @@ def use_model_safely(model_name):
         raise ValueError(f"Model '{model_name}' not found. Available models: {list(MODELS.keys())}")
     
     try:
-        grib = Grib(model=model_name)
-        grib.download()
-        return grib
+        gb = Grib(model=model_name)
+        gb.download()
+        return gb
     except Exception as e:
         print(f"Error with {model_name} model: {e}")
         return None
@@ -551,29 +555,29 @@ def use_model_safely(model_name):
 # Error handling for custom models
 def download_model_with_retry(model_name, max_retries=3):
     """Download a model with retry logic."""
-    
+
     for attempt in range(max_retries):
         try:
-            grib = Grib(model=model_name)
-            grib.download()
-            
+            gb = Grib(model=model_name)
+            gb.download()
+
             # Verify data is valid
-            for subset_name in grib.subset_names:
-                subset = grib._subsets[subset_name]
+            for subset_name in gb:
+                subset = gb[subset_name]
                 if not subset.grib_file.exists():
                     raise ValueError(f"Missing file for {subset_name}")
-            
+
             return grib
-            
+
         except Exception as e:
             print(f"Attempt {attempt + 1} failed: {e}")
             if attempt == max_retries - 1:
                 raise
-            
+
             # Wait before retrying
             import time
             time.sleep(2 ** attempt)  # Exponential backoff
-    
+
     return None
 ```
 
@@ -609,37 +613,38 @@ print(MODELS['my_model']['__doc__'])
 ```python
 # Create tests for your custom models
 def test_model(model_name, test_date='2023-12-25'):
-    """Test that a custom model works correctly."""
-    
-    import pandas as pd
-    
-    print(f"Testing {model_name} model...")
-    
-    try:
-        # Test initialization
-        grib = Grib(model=model_name, time=test_date)
-        print(f"✅ Initialization successful")
-        
-        # Test downloading (with minimal files for testing)
-        # Note: In real tests, you might mock network calls
-        
-        # Test subset access
-        for subset_name in grib.subset_names:
-            subset = grib._subsets[subset_name]
-            print(f"  Subset {subset_name}: {subset.config}")
-        
-        print(f"✅ Model {model_name} validated successfully")
-        return True
-        
-    except Exception as e:
-        print(f"❌ Test failed: {e}")
-        return False
+   """Test that a custom model works correctly."""
+
+   import pandas as pd
+
+   print(f"Testing {model_name} model...")
+
+   try:
+      # Test initialization
+      gb = Grib(model=model_name, time=test_date)
+      print(f"✅ Initialization successful")
+
+      # Test downloading (with minimal files for testing)
+      # Note: In real tests, you might mock network calls
+
+      # Test subset access
+      for subset_name in gb:
+         subset = gb[subset_name]
+         print(f"  Subset {subset_name}: {subset.variables}")
+
+      print(f"✅ Model {model_name} validated successfully")
+      return True
+
+   except Exception as e:
+      print(f"❌ Test failed: {e}")
+      return False
+
 
 # Run tests
 models_to_test = ['gfs_temp', 'advanced_model']
 for model in models_to_test:
-    if model in MODELS:
-        test_model(model)
+   if model in MODELS:
+      test_model(model)
 ```
 
 ### 5. Integration with Other Libraries
@@ -653,9 +658,9 @@ def analyze_with_pandas(grib_instance):
     
     results = {}
     
-    for subset_name in grib_instance.subset_names:
+    for subset_name in grib_instance:
         try:
-            data = grib_instance[subset_name]
+            data = grib_instance[subset_name].ds
             
             if data is not None:
                 # Calculate time averages
@@ -678,9 +683,9 @@ def analyze_with_pandas(grib_instance):
     return None
 
 # Usage
-grib = Grib(model='gfs_temp')
-grib.download()
-df = analyze_with_pandas(grib)
+gb = Grib(model='gfs_temp')
+gb.download()
+df = analyze_with_pandas(gb)
 if df is not None:
     print(f"Combined DataFrame: {df.shape}")
     print(df.head())

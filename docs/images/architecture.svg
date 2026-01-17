@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600">
+  <defs>
+    <style>
+      .title { font: bold 24px sans-serif; fill: #2c3e50; }
+      .box-title { font: bold 16px sans-serif; fill: white; }
+      .box-subtitle { font: italic 12px sans-serif; fill: white; opacity: 0.9; }
+      .layer-title { font: bold 14px sans-serif; fill: #34495e; }
+      .arrow { stroke: #7f8c8d; stroke-width: 2; fill: none; marker-end: url(#arrowhead); }
+    </style>
+    <marker id="arrowhead" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <polygon points="0 0, 10 3, 0 6" fill="#7f8c8d" />
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="800" height="600" fill="#f8f9fa"/>
+
+  <!-- Title -->
+  <text x="400" y="40" text-anchor="middle" class="title">🌍 WindGrib Architecture</text>
+
+  <!-- Main container -->
+  <rect x="50" y="70" width="700" height="500" rx="10" fill="none" stroke="#4682b4" stroke-width="3"/>
+
+  <!-- Core Classes Layer -->
+  <rect x="80" y="100" width="640" height="120" rx="8" fill="#e6f3ff" stroke="#4682b4" stroke-width="2"/>
+  <text x="400" y="125" text-anchor="middle" class="layer-title">Core Classes</text>
+
+  <!-- Grib Box -->
+  <rect x="150" y="140" width="200" height="60" rx="5" fill="#4682b4" stroke="#2c3e50" stroke-width="2"/>
+  <text x="250" y="165" text-anchor="middle" class="box-title">📦 Grib</text>
+  <text x="250" y="185" text-anchor="middle" class="box-subtitle">Main class</text>
+
+  <!-- GribSubset Box -->
+  <rect x="450" y="140" width="200" height="60" rx="5" fill="#4682b4" stroke="#2c3e50" stroke-width="2"/>
+  <text x="550" y="165" text-anchor="middle" class="box-title">🧩 GribSubset</text>
+  <text x="550" y="185" text-anchor="middle" class="box-subtitle">Subset class</text>
+
+  <!-- Operations Layer -->
+  <rect x="80" y="250" width="640" height="120" rx="8" fill="#fff4e6" stroke="#ff8c00" stroke-width="2"/>
+  <text x="400" y="275" text-anchor="middle" class="layer-title">Operations Layer</text>
+
+  <!-- Download Manager Box -->
+  <rect x="150" y="290" width="200" height="60" rx="5" fill="#ff8c00" stroke="#2c3e50" stroke-width="2"/>
+  <text x="250" y="315" text-anchor="middle" class="box-title">⬇️ Download Manager</text>
+  <text x="250" y="335" text-anchor="middle" class="box-subtitle">Asyncio + HTTP ranges</text>
+
+  <!-- Data Processing Box -->
+  <rect x="450" y="290" width="200" height="60" rx="5" fill="#ff8c00" stroke="#2c3e50" stroke-width="2"/>
+  <text x="550" y="315" text-anchor="middle" class="box-title">⚙️ Data Processing</text>
+  <text x="550" y="335" text-anchor="middle" class="box-subtitle">Loading &amp; caching</text>
+
+  <!-- External Interfaces Layer -->
+  <rect x="80" y="400" width="640" height="120" rx="8" fill="#f0fff0" stroke="#32cd32" stroke-width="2"/>
+  <text x="400" y="425" text-anchor="middle" class="layer-title">External Interfaces</text>
+
+  <!-- S3/HTTP Box -->
+  <rect x="150" y="440" width="200" height="60" rx="5" fill="#32cd32" stroke="#2c3e50" stroke-width="2"/>
+  <text x="250" y="465" text-anchor="middle" class="box-title">☁️ S3/HTTP</text>
+  <text x="250" y="485" text-anchor="middle" class="box-subtitle">AWS S3 + s3fs</text>
+
+  <!-- xarray/cfgrib Box -->
+  <rect x="450" y="440" width="200" height="60" rx="5" fill="#32cd32" stroke="#2c3e50" stroke-width="2"/>
+  <text x="550" y="465" text-anchor="middle" class="box-title">📊 xarray/cfgrib</text>
+  <text x="550" y="485" text-anchor="middle" class="box-subtitle">Data backend</text>
+
+  <!-- Arrows -->
+  <path d="M 250 200 L 250 290" class="arrow"/>
+  <path d="M 550 200 L 550 290" class="arrow"/>
+  <path d="M 250 350 L 250 440" class="arrow"/>
+  <path d="M 550 350 L 550 440" class="arrow"/>
+</svg>

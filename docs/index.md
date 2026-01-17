@@ -4,18 +4,23 @@ Welcome to the official documentation for WindGrib, a Python library for working
 
 ## 🎯 Project Overview and Goals
 
-WindGrib addresses the specific need for fast, bulk wind data retrieval from meteorological models. While [Herbie](https://github.com/blaylockbk/Herbie) excels at flexible, query-based data access, WindGrib optimizes for a different use case: efficiently downloading complete wind datasets for forecast analysis.
+### Origin and Motivation
+
+WindGrib was born from a practical need in sailing weather routing: efficiently retrieving meteorological data as soon as it becomes available. Weather routing software for sailboats requires complete, up-to-date wind forecasts to calculate optimal routes. The challenge was to automatically download the latest forecast data from multiple sources (NOAA GFS, ECMWF) the moment they're published, without manual intervention or complex file management.
+
+While [Herbie](https://github.com/blaylockbk/Herbie) excels at flexible, query-based data access ([see equivalent Herbie implementation](../examples/herbie_alternative.py)), WindGrib optimizes for this specific use case: efficiently downloading complete wind datasets for immediate use in routing applications. **[Benchmark results](benchmark_results.md)** show WindGrib is 2.9x faster than Herbie overall, making it ideal for time-sensitive applications where getting the latest forecast quickly matters.
 
 **Design Philosophy:**
 - **AWS S3 Focused**: Specifically designed for meteorological data hosted on Amazon S3 (NOAA, ECMWF)
-- **s3fs Integration**: Uses s3fs for efficient scanning and discovery of available datasets
-- **Bulk Download Optimization**: Designed to quickly retrieve all wind components for a given forecast time
+- **Automatic Latest Data**: Detects and downloads the most recent available forecast without manual date specification
+- **Asyncio-Based Downloads**: Concurrent downloads using asyncio (2.3x faster than FastHerbie's multi-threading)
+- **Parallel GRIB Decoding**: Process-based parallel decoding (2.6x faster, cfgrib doesn't support parallel reading on Windows)
+- **Incremental NetCDF Caching**: Smart caching provides 6.5x speedup on subsequent runs
 - **Subset-Based Organization**: Pre-configured data subsets (wind, land masks) for immediate use
 - **File Consolidation**: Concatenates multiple GRIB files into single datasets per subset, simplifying data management
-- **Parallel Processing**: Optimized for concurrent downloads of multiple GRIB files
 - **Forecast-Centric**: Focuses on getting complete forecast datasets rather than selective variable queries
 
-**Key Advantage:** While Herbie requires managing multiple individual GRIB files, WindGrib consolidates all related data (e.g., all wind forecast steps) into unified datasets, eliminating the complexity of handling numerous separate files.
+**Key Advantage:** While Herbie requires managing multiple individual GRIB files, WindGrib consolidates all related data (e.g., all wind forecast steps) into unified datasets, eliminating the complexity of handling numerous separate files—critical for automated weather routing workflows.
 
 **Limitation:** WindGrib is specifically designed for AWS S3-hosted meteorological data and uses s3fs for data discovery. It cannot access data from other sources or protocols.
 
@@ -36,6 +41,11 @@ WindGrib addresses the specific need for fast, bulk wind data retrieval from met
   - Defining new data models
   - Configuration examples
   - Integration with other data sources
+
+- **[Benchmark Results](benchmark_results.md)** - Performance comparison with Herbie
+  - Detailed timing analysis
+  - Asyncio vs multi-threading comparison
+  - Cache performance evaluation
 
 ## 🚀 Getting Started
 
@@ -58,11 +68,11 @@ If you're new to WindGrib:
 from windgrib import Grib
 
 # Download GFS wind data (default subset)
-grib = Grib(model='gfswave')
-grib.download()
+gb = Grib(model='gfswave')
+gb.download()
 
 # Access wind data
-wind_data = grib['wind']
+wind_data = gb['wind'].ds
 
 # Calculate wind speed
 import numpy as np
