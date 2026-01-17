@@ -30,7 +30,7 @@ MODELS = {
         'idx': '.index',
         'subsets': {
             'wind': ['10u', '10v'],
-            'land': (['lsm'], 0)
+            'land': ('lsm', 0)
         }
     }
 }
@@ -54,7 +54,8 @@ async def download_messages(session, url, headers, idx):
 
 def get_headers(start_byte, end_byte, **kwargs):
     """Return headers to download part of a file"""
-    return {'Range': f'bytes={start_byte}-{end_byte if end_byte != -1 else ''}'}
+    end = end_byte if end_byte != -1 else ''
+    return {'Range': f'bytes={start_byte}-{end}'}
 
 
 def get_partitions(df):
@@ -73,10 +74,70 @@ def get_partitions(df):
     ]).T
     return partitions
 
+
+def parse_subset_config(config):
+    """
+    Parse subset configuration into standardized format.
+
+    Args:
+        config: Can be:
+            - list: ['var1', 'var2'] -> variables only
+            - tuple: (['var1', 'var2'],) -> variables only
+            - tuple: (['var1', 'var2'], step) -> variables + step
+            - tuple: (['var1', 'var2'], step, filter_keys) -> variables + step + filters
+            - tuple: (['var1', 'var2'], filter_keys) -> variables +  filters
+
+    Returns:
+        dict: {'variables': list, 'step': list/int/None, 'filter_keys': dict}
+    """
+    if isinstance(config, list):
+        return {'var': config, 'step': None, 'filter_keys': {}}
+
+    if isinstance(config, tuple) and len(config) in [2, 3]:
+        filter_keys = {}
+        if isinstance(config[-1], dict):
+            filter_keys = config[-1]
+            config = config[:-1]
+        step = config[1] if len(config) == 2 else None
+
+        return {
+            'var': config[0],
+            'step': step,
+            'filter_keys': filter_keys
+        }
+
+    raise ValueError(f"Invalid subset configuration: {config}")
+
+
 class GribSubset:
     """Handles individual subset operations for GRIB data with async downloads."""
 
-    def __init__(self, name, grib_instance, var, step=None, **filter_keys):
+    @staticmethod
+    def from_model(name, grib, items):
+        """
+        Create a GribSubset from model subset definition
+        items can be:
+        - str: 'u' -> var='u'
+        - list: ['var1', 'var2'] -> var
+        - tuple: (['var1', 'var2'],) -> var only
+        - tuple: (['var1', 'var2'], step) -> variables + step
+        - tuple: (['var1', 'var2'], step, filter_keys) -> variables + step + filter_keys
+        - tuple: (['var1', 'var2'], filter_keys) -> variables + filter_keys
+        """
+        if isinstance(items, str):
+            items = [items]
+        if isinstance(items, list):
+            return GribSubset(name, grib, items)
+        if isinstance(items, tuple):
+            _args = [arg for arg in items if not isinstance(arg, dict)]
+            filter_keys = {}
+            for arg in items:
+                if isinstance(arg, dict):
+                    filter_keys.update(arg)
+            return GribSubset(name, grib, *_args, **filter_keys)
+        raise ValueError(f"Invalid subset configuration: {items}")
+
+    def __init__(self, name, grib_instance, var=None, step=None, **filter_keys):
         """Initialize subset with name, configuration and parent grib instance."""
         self.name = name
         self.var = var
@@ -89,14 +150,22 @@ class GribSubset:
         if step is not None:
             self._step = list(np.unique(step))
 
-        print(f"🧩 [{self.grib.model['name']}] ({name})"
+        print(f"\n🧩 [{self.grib.model['name']}] ({name})"
               f" Initializing subset: {self}")
 
     def __str__(self):
         return f"({self.name}) {self.var} len(step)={len(self.step)}"
 
-    def __getitem__(self, keys):
-        return GribSubset(self.name, self.grib, self.var, *keys)
+    def __getitem__(self, key):
+        key = np.atleast_1d(key)
+        if key.dtype == np.bool_:
+            key = np.array(self.step)[key]
+        if not np.issubdtype(key.dtype, np.integer):
+            raise KeyError('GriSubset indexing support only integer dtype')
+        invalid_keys = set(key) - set(self.step)
+        if invalid_keys:
+            raise KeyError(f'{invalid_keys} not found in step')
+        return GribSubset(self.name, self.grib, self.var, step=key, **self.filter_keys)
 
     @property
     def grib_file(self):
@@ -249,6 +318,7 @@ class GribSubset:
     def clear_cache(self):
         """Clean cache files."""
         self.grib_file.unlink(missing_ok=True)
+        self.netcdf_file.unlink(missing_ok=True)
 
     def to_netcdf(self, encoding=None, zlib=False, complevel=1):
         """Save dataset to NetCDF file with uint16 encoding."""
@@ -336,7 +406,7 @@ class Grib:
                      else pd.Timestamp.utcnow().as_unit('s'))
         self.timestamp = timestamp
 
-        print(f"🚀 [{model}]"
+        print(f"\n🚀 [{model}]"
               f" Initializing Grib for product"
               f" {self.model['product']} at {self.timestamp.strftime('%Y%m%d-%Hh')} UTC")
 
@@ -351,45 +421,38 @@ class Grib:
             self.folder_path.mkdir(parents=True, exist_ok=True)
             print(f"📁 [{model}] Data folder: {self.folder_path.as_uri()}")
 
+        # Initialize grib subsets from model
+        for name, subset_args in self.model['subsets'].items():
+            if isinstance(subset_args, list):
+                self._subsets[name] = GribSubset(name, self, var=subset_args)
+            elif not isinstance(subset_args, tuple):
+                raise ValueError(f"Invalid subset definition: {subset_args}")
+            elif isinstance(subset_args[-1], dict):
+                self._subsets[name] = GribSubset(name, self, *subset_args[:-1], **subset_args[-1])
+            else:
+                self._subsets[name] = GribSubset(name, self, *subset_args)
+
     def __str__(self):
         return f"Grib['{self.model['name']}']"
 
-    def __getitem__(self, keys):
-        """Get an existing subset of create a new one from keys"""
-        _args = ()
-        if isinstance(keys, str):
-            if hasattr(self, keys):
-                return getattr(self, keys)
-            name = keys
-        else:
-            name = keys[0]
-            _args = keys[1:]
-        if not _args:
-            if name in self._subsets:
-                return self._subsets[name]
-            if name in self.model['subsets']:
-                subset = self.model['subsets'][name]
-                if isinstance(subset, tuple):
-                    return GribSubset(name, self, self.model['subsets'][name][0], *subset[1:])
-                return GribSubset(name, self, self.model['subsets'][name])
-            raise KeyError(f"'{name}' not found in {self}")
-        if name in self._subsets:
-            return self._subsets[name][*_args]
-        if name in self.model['subsets']:
-            subset = self.model['subsets'][name]
-            if isinstance(subset, tuple):
-                return GribSubset(name, self, self.model['subsets'][name][0], *_args)
-            return GribSubset(name, self, self.model['subsets'][name], *_args)
-        raise KeyError(f"'{name}' not found in {self}")
+    def __getitem__(self, key):
+        """Get an existing subset and create a new one with additional args from keys."""
+        if not isinstance(key, str):
+            raise KeyError(f"'{key}' should be a string")
+        if hasattr(self, key):
+            return getattr(self, key)
+        if key in self._subsets:
+            return self._subsets[key]
+        if key in self.model['subsets']:
+            return GribSubset.from_model(key, self, self.model['subsets'][key])
+        raise KeyError(f"'{key}' not found in {self}")
 
     def __iter__(self):
         # First iterate on model subsets keys
-        keys = self.model['subsets'].keys()
-        for key in keys:
-            yield key
+        yield from self.model['subsets']
         # Then iterate on existing subsets keys
-        for key in self._subsets.keys():
-            if key not in keys:
+        for key in self._subsets:
+            if key not in self.model['subsets']:
                 yield key
 
     @property
@@ -497,6 +560,12 @@ class Grib:
         for subset in self.model['subsets'].keys():
             self[subset].clear_cache()
 
+    def sel(self, var=None, step=None, name=None, **kwargs):
+        """Create a GribSubset with specified filters (xarray-like interface)."""
+        if name is None:
+            name = f"({var if var else ''},{step if step else ''},{kwargs})"
+        return GribSubset(name, self, var=var, step=step, **kwargs)
+
     def get_file_url(self, idx_file):
         """Get full URL for file."""
         file = idx_file.replace(self.model.get('idx', '.idx'), '')
@@ -549,14 +618,18 @@ class Grib:
                     'message_id', 'start_byte', 'reference_time',
                     'variable', 'layer', 'step', '?'
                 ])
+            # df = df.drop(columns='?')
             df['message_id'] = df['message_id'].astype(int)
             df['start_byte'] = df['start_byte'].astype(int)
             df['end_byte'] = df['start_byte'].shift(-1) - 1
             df['_length'] = df['end_byte'] - df['start_byte'] + 1
             df['end_byte'] = df['end_byte'].fillna(-1).astype(int)
             df['_length'] = df['_length'].fillna(-1).astype(int)
+            # replace bad step definition (anl, whitespace and step range)
             df.loc[df['step'] == 'anl', 'step'] = '0'
             df['step'] = df['step'].str.split(' ').str[0]
+            df['step'] = df['step'].str.split('-').str[0]
+
 
         df['step'] = df['step'].astype(int)
         df['url'] = self.get_file_url(idx_file)
@@ -564,7 +637,7 @@ class Grib:
 
         return df
 
-    async def _download_data(self, df, progress_bar=True, desc=None):
+    async def _download_data(self, df, desc=None):
         """Download GRIB data asynchronously."""
 
         downloaded_data = []
