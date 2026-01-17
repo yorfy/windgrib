@@ -183,7 +183,7 @@ def grib_to_dataset(
         progress_bar: bool = True,
         decode_timedelta: bool = False,
         desc: str = '📊 Decoding GRIB messages'
-):  # pylint: disable=too-many-locals
+):  # pylint: disable=too-many-locals, too-many-branches
     """Convert GRIB bytes to xarray dataset."""
     # Split grib bytes in messages bytes
     messages = split_messages(grib_bytes)
