@@ -2,7 +2,7 @@
 
 [![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.2.7-orange.svg)](https://pypi.org/project/windgrib/)
+[![Version](https://img.shields.io/badge/version-1.0.0-orange.svg)](https://pypi.org/project/windgrib/)
 
 A Python library for downloading, reading, and processing meteorological data in GRIB format.
 
@@ -15,7 +15,7 @@ WindGrib focuses on efficient wind data extraction and targeted variable downloa
 - **Smart Caching**: Intelligent caching with incremental download completion
 - **Multi-Model Support**: GFS Wave, ECMWF IFS, and custom model definitions
 - **AWS S3 Focused**: Specifically designed for meteorological data hosted on Amazon S3
-- **Bulk Download Optimization**: Designed to quickly retrieve all wind components for a given forecast time
+- **High Performance**: Asyncio-based downloads and parallel GRIB decoding for maximum speed
 
 ## 🚀 Installation
 
@@ -30,11 +30,11 @@ from windgrib import Grib
 import numpy as np
 
 # Download GFS wind data
-grib = Grib(time='2026/01/3', model='gfswave')
-grib.download()
+gb = Grib(time='2026/01/3', model='gfswave')
+gb.download()
 
 # Access wind data
-wind_data = grib['wind']
+wind_data = gb['wind'].ds
 
 # Calculate wind speed
 wind_speed = np.sqrt(wind_data.u**2 + wind_data.v**2)
@@ -50,6 +50,7 @@ For complete documentation, examples, and advanced usage:
 - [Usage Examples](https://github.com/yorfy/windgrib/tree/master/docs/usage_examples.md) - Practical examples with working code
 - [Technical Guide](https://github.com/yorfy/windgrib/tree/master/docs/technical_guide.md) - Implementation details for developers
 - [Custom Models](https://github.com/yorfy/windgrib/tree/master/docs/custom_models.md) - Guide for extending WindGrib
+- [Benchmark Results](https://github.com/yorfy/windgrib/tree/master/docs/benchmark_results.md) - Performance comparison with Herbie
 
 ## 🤝 Contributing
 

@@ -16,7 +16,7 @@ gb = Grib(data_path=data_dir)
 def test_version():
     """Test that version is defined and is a string."""
     assert isinstance(__version__, str)
-    assert __version__ == "0.2.7"
+    assert __version__ == "1.0.0"
 
 
 def test_grib_getitem():
