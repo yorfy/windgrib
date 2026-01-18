@@ -148,7 +148,7 @@ class GribSubset:
         self._ds = None
         self._step = self.grib.step
         if step is not None:
-            self._step = list(np.unique(step))
+            self._step = np.unique(step)
 
         print(f"\n🧩 [{self.grib.model['name']}] ({name})"
               f" Initializing subset: {self}")
