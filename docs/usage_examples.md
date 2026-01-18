@@ -5,9 +5,10 @@ This section presents concrete examples showing different usage modes of WindGri
 ## Table of Contents
 
 1. [Basic Download and Reading](#basic-download-and-reading)
-2. [Data Visualization](#data-visualization)
-3. [Model Comparison](#model-comparison)
-4. [GFS Atmospheric Temperature](#gfs-atmospheric-temperature)
+2. [Download Subset](#download-subset)
+3. [Data Visualization](#data-visualization)
+4. [Model Comparison](#model-comparison)
+5. [GFS Atmospheric Temperature](#gfs-atmospheric-temperature)
 
 ## Basic Download and Reading
 
@@ -29,24 +30,53 @@ from windgrib import Grib
 if __name__ == '__main__':
     # Create a GRIB instance for the GFS Wave model
     print("\n====Initiating Grib instance and looking for forecast data====")
-    gb = Grib(model='ecmwf_ifs')
-    # gb = Grib()
+    gb = Grib()
 
-    # Download the data
+    # Download all available data at the latest available forcast date
     print("\n====Downloading GFS Wave data...====")
-    gb.download(clear_cache=True)
-    # clear_cache=False is the default option
-    # But you can use clear_cache=True to force downloading ignoring cache files
+    gb.download()
+    
+    # Access the data
+    ds = gb['wind'].ds
+    print(ds)
 
-    # save to grib file for further analysis of downloaded data
-    gb.to_grib_file()
-
-    # Access wind data
-    wind_data = gb['wind']
-    print(f"====Loaded dataset====\n{wind_data}")
-
-    # save to netcdf file to speedup further data reading
+    # By default, downloaded data are saved into one consolidated grib2 file
+    # But you can save to netcdf file to speedup further data reading
     gb.to_netcdf()
+
+
+```
+
+## Download Grib Subset
+
+This example shows how to download only specific subsets and forecast steps to minimize data transfer.
+
+**Key Features:**
+- Downloads only the wind subset from ECMWF
+- Limits forecast steps to current + 10 steps
+- Demonstrates efficient targeted downloading
+
+```python
+"""Download only wind subset for specific forecast steps"""
+
+from windgrib import Grib
+
+if __name__ == '__main__':
+    # Create ECMWF instance
+    print("\n====Downloading ECMWF wind subset for limited steps====")
+    gb = Grib(model='ecmwf_ifs')
+    
+    # Get wind subset for current step to current step + 10
+    valid_steps = (gb.step >= gb.current_step) & (gb.step < gb.current_step + 10)
+    wind_subset = gb['wind'][valid_steps]
+
+    # Download only this subset
+    wind_subset.download()
+    
+    # Access the downloaded wind data
+    wind_data = wind_subset.ds
+    print(f"Downloaded steps: {wind_data.step.values}")
+    print(f"Variables: {wind_data.data_vars}")
 ```
 
 ## Data Visualization
@@ -64,19 +94,20 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 if __name__ == '__main__':
-    # Load data
+    # Download the first step of latest available GFS wind data
     print("Loading data...")
     gb = Grib(model='gfswave')
-    gb.download()
-    wind_data = gb['wind'].ds
-
+    gbs = gb['wind'][0]
+    gbs.download()
+    
     # Calculate wind speed
     print("Calculating wind speed...")
-    wind_speed = 1.94384 * np.sqrt(wind_data.u ** 2 + wind_data.v ** 2)
+    ds = gbs.ds
+    wind_speed = 1.94384 * np.sqrt(ds.u ** 2 + ds.v ** 2)
     wind_speed.attrs['units'] = 'knots'
 
     # Plot Wind speed - First time step
-    wind_speed.isel(step=0).plot(cmap='viridis')
+    wind_speed.plot(cmap='viridis')
     plt.tight_layout()
 
     # Save image
@@ -152,7 +183,6 @@ if __name__ == '__main__':
     fig.suptitle(f"GFS and ECMWF wind speed comparison at {gfs_gb.timestamp}")
     plt.tight_layout()
     plt.savefig('../docs/images/wind_speed_comparison.png', dpi=300, bbox_inches='tight')
-    print("💾 Wind speed comparison plot saved to wind_speed_comparison.png")
     plt.show()
 ```
 
