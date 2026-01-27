@@ -7,7 +7,6 @@ This guide explains how to extend WindGrib to support new data types by creating
 1. [Model Structure](#model-structure)
 2. [Basic Example](#basic-example)
 3. [Advanced Configuration](#advanced-configuration)
-4. [Complete Example](#complete-example)
 
 ## Model Structure
 
@@ -89,7 +88,7 @@ Subsets can be defined in multiple ways:
 'pressure': (['PRMSL'], 0, {'layer': ['surface']})
 ```
 
-## Complete Example
+### Subset with temperature Example
 
 This example from [temperature_variation_near_toulouse.py](../examples/temperature_variation_near_toulouse.py) shows a complete custom model implementation:
 
@@ -130,17 +129,49 @@ if __name__ == '__main__':
     print("Example completed")
 ```
 
-### Key Points
+#### Key Points
 
 1. **Product Identifier**: Use `.pgrb2.0p25` to avoid matching unwanted products
 2. **Subset Filters**: Apply `{'layer': ['surface']}` to get only surface data
 3. **Empty Extension**: Set `'ext': ''` when files don't have a standard extension
 4. **Data Access**: Variables are accessible via their short names (e.g., `ds.t` for temperature)
 
-## Best Practices
+### Subset with multiple levels indexing
 
-1. **Test with Small Subsets**: Start with a single variable and limited time steps
-2. **Use Filters**: Apply filters to reduce download size and processing time
-3. **Check Variable Names**: Use `.idx` files to verify available variables and their names
-4. **Document Your Model**: Add comments explaining the purpose and configuration
-5. **Handle Errors**: Wrap downloads in try-except blocks for robust code
+When working with atmospheric data at multiple pressure levels, you can use filter keys to select specific levels and xarray operations to restructure the dataset.
+
+
+```python
+from windgrib.grib import MODELS, Grib
+
+# Define model with temperature variable
+MODELS['ecmwf_t'] = {
+    'product': 'oper',
+    'url': 'https://ecmwf-forecasts.s3.eu-central-1.amazonaws.com/',
+    'key': '{date}/{h:02d}z/ifs/0p25/oper/',
+    'idx': '.index',
+    'subsets': {'temperature': 't'}
+}
+
+# Download temperature data at specific pressure levels
+gb = Grib(model='ecmwf_t')
+subset = gb['temperature'].sel(levelist=['50', '100', '200'])
+subset.download()
+
+# Restructure dataset to have levels as a separate dimension
+ds = subset.ds
+ds = ds.assign_coords(step_original=ds.step)
+ds = ds.set_index(step=['step_original', 'isobaricInhPa']).unstack('step')
+ds = ds.rename({'step_original': 'step'})
+
+# Result: dataset with dimensions (step, isobaricInhPa, latitude, longitude)
+print(ds)
+```
+
+#### Key Techniques
+
+1. **Filter by Level**: Use `sel(levelist=['50', '100', '200'])` to download specific pressure levels
+2. **Preserve Original Step**: `assign_coords(step_original=ds.step)` saves the time dimension
+3. **Create Multi-Index**: `set_index(step=['step_original', 'isobaricInhPa'])` combines step and level
+4. **Unstack Dimensions**: `unstack('step')` separates the multi-index into distinct dimensions
+5. **Rename Coordinates**: `rename({'step_original': 'step'})` restores the original dimension name
