@@ -309,8 +309,12 @@ def test_grib_subset_sel():
 
     # Test that original subset is not modified
     original_filter_keys = subset.filter_keys.copy()
-    subset = subset.sel(step=[0, 12, 24])
+    original_step = subset.step.copy()
+    new_subset = subset.sel(step=[0, 12, 24])
+    assert np.array_equal(new_subset.step, [0, 12, 24])
+    assert new_subset.filter_keys == original_filter_keys
     assert subset.filter_keys == original_filter_keys
+    assert np.array_equal(subset.step, original_step)
 
     # Test with invalid filter key
     with pytest.raises(KeyError):
