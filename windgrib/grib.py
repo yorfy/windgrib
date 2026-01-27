@@ -1,6 +1,7 @@
 """GRIB data download and processing module for weather data."""
 
 import asyncio
+import copy
 import json
 import time
 from pathlib import Path
@@ -146,9 +147,14 @@ class GribSubset:
         self._new_idx_files = None
         self._grib_data = None
         self._ds = None
+
         self._step = self.grib.step
         if step is not None:
-            self._step = np.unique(step)
+            step = np.unique(step)
+            invalid_step = pd.Index(step).difference(self._step)
+            if invalid_step.any():
+                raise ValueError(f"Invalid step: {invalid_step.values}")
+            self._step = step
 
         print(f"\n🧩 [{self.grib.model['name']}] ({name})"
               f" Initializing subset: {self}")
@@ -157,15 +163,22 @@ class GribSubset:
         return f"({self.name}) {self.var} len(step)={len(self.step)}"
 
     def __getitem__(self, key):
-        key = np.atleast_1d(key)
-        if key.dtype == np.bool_:
-            key = np.array(self.step)[key]
-        if not np.issubdtype(key.dtype, np.integer):
-            raise KeyError('GriSubset indexing support only integer dtype')
-        invalid_keys = set(key) - set(self.step)
-        if invalid_keys:
-            raise KeyError(f'{invalid_keys} not found in step')
-        return GribSubset(self.name, self.grib, self.var, step=key, **self.filter_keys)
+        return GribSubset(
+            name=self.name,
+            grib_instance=self.grib,
+            var=self.var,
+            step=self.step[key],
+            **self.filter_keys
+        )
+
+    def sel(self, name=None, **kwargs):
+        """Create a new GribSubset with specified filters (xarray-like interface)."""
+        if name is None:
+            name = self.name
+        for key in kwargs:
+            if key not in self.idx.columns:
+                raise KeyError(key)
+        return GribSubset(name, self.grib, var=self.var, **kwargs)
 
     @property
     def grib_file(self):
@@ -189,19 +202,19 @@ class GribSubset:
         if df.empty:
             return df
 
-        # filter with var
-        var_name = 'variable' if 'variable' in df else 'param'
-        df = df.loc[df[var_name].isin(self.var)]
-
-        # filter with step
-        df = df.loc[df['step'].isin(self.step)]
+        # filter with subset filter keys
+        filter_keys = self.filter_keys.copy()
+        # filter with var and step
+        filter_keys['variable' if 'variable' in df else 'param'] = self.var
+        filter_keys['step'] = self.step
 
         # filter with subset filter keys
-        for key, value in self.filter_keys.items():
-            if isinstance(value, list):
-                df = df.loc[df[key].isin(value)]
-            else:
-                df = df.loc[df[key] == value]
+        for key, value in filter_keys.items():
+            values = pd.Index(value)
+            invalid_values = values.difference(df[key])
+            if invalid_values.any():
+                raise ValueError(f"Invalid values for {key}: {invalid_values.values}")
+            df = df.loc[df[key].isin(values)]
 
         return df.sort_values(['step', 'message_id']).reset_index(drop=True)
 
@@ -421,31 +434,34 @@ class Grib:
             self.folder_path.mkdir(parents=True, exist_ok=True)
             print(f"📁 [{model}] Data folder: {self.folder_path.as_uri()}")
 
-        # Initialize grib subsets from model
-        for name, subset_args in self.model['subsets'].items():
-            if isinstance(subset_args, list):
-                self._subsets[name] = GribSubset(name, self, var=subset_args)
-            elif not isinstance(subset_args, tuple):
-                raise ValueError(f"Invalid subset definition: {subset_args}")
-            elif isinstance(subset_args[-1], dict):
-                self._subsets[name] = GribSubset(name, self, *subset_args[:-1], **subset_args[-1])
-            else:
-                self._subsets[name] = GribSubset(name, self, *subset_args)
-
     def __str__(self):
         return f"Grib['{self.model['name']}']"
 
-    def __getitem__(self, key):
+    def __getattr__(self, item):
         """Get an existing subset and create a new one with additional args from keys."""
-        if not isinstance(key, str):
-            raise KeyError(f"'{key}' should be a string")
-        if hasattr(self, key):
-            return getattr(self, key)
-        if key in self._subsets:
-            return self._subsets[key]
-        if key in self.model['subsets']:
-            return GribSubset.from_model(key, self, self.model['subsets'][key])
-        raise KeyError(f"'{key}' not found in {self}")
+        if item.startswith('_'):
+            raise AttributeError(f"'{type(self).__name__}' object has no attribute '{item}'")
+        if item in self._subsets:
+            return self._subsets[item]
+        if item in self.model['subsets']:
+            return GribSubset.from_model(item, self, self.model['subsets'][item])
+
+        raise AttributeError(f"'{type(self).__name__}' object has no attribute '{item}'")
+
+    def __getitem__(self, item):
+        """Get an existing attribute subset or return a copy of self with a subset of step"""
+        if isinstance(item, str):
+            attr = getattr(self, item, None)
+            if attr is not None:
+                return attr
+            if item in self._subsets:
+                return self._subsets[item]
+            if item in self.model['subsets']:
+                return GribSubset.from_model(item, self, self.model['subsets'][item])
+            raise KeyError(item)
+        new_grib = copy.copy(self)
+        new_grib._step = np.atleast_1d(self.step[item])
+        return new_grib
 
     def __iter__(self):
         # First iterate on model subsets keys
@@ -564,6 +580,9 @@ class Grib:
         """Create a GribSubset with specified filters (xarray-like interface)."""
         if name is None:
             name = f"({var if var else ''},{step if step else ''},{kwargs})"
+        for key in kwargs:
+            if key not in self.idx.columns:
+                raise KeyError(key)
         return GribSubset(name, self, var=var, step=step, **kwargs)
 
     def get_file_url(self, idx_file):
@@ -610,6 +629,7 @@ class Grib:
             df['message_id'] = df.index
             df['start_byte'] = df['_offset']
             df['end_byte'] = df['start_byte'] + df['_length'] - 1
+
         else:
             idx_txt = idx_txt.split('\n')
             df = pd.DataFrame(
@@ -629,7 +649,6 @@ class Grib:
             df.loc[df['step'] == 'anl', 'step'] = '0'
             df['step'] = df['step'].str.split(' ').str[0]
             df['step'] = df['step'].str.split('-').str[0]
-
 
         df['step'] = df['step'].astype(int)
         df['url'] = self.get_file_url(idx_file)

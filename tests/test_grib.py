@@ -6,7 +6,7 @@ import pandas as pd
 
 import pytest
 from windgrib import __version__
-from windgrib.grib import Grib, GribSubset
+from windgrib.grib import Grib, GribSubset, MODELS
 
 data_dir = Path(__file__).parent / "data"
 
@@ -25,16 +25,57 @@ def test_grib_getitem():
     # Test accessing subset by name
     assert isinstance(gb['wind'], GribSubset)
 
+    # Test accessing subset by attribute name
+    assert isinstance(gb.wind, GribSubset)
+
     # Test accessing attribute
     assert isinstance(gb['step'], np.ndarray)
+    assert np.all(gb.step == gb['step'])
 
     # Test invalid key
-    with pytest.raises(KeyError, match="'invalid' not found in Grib\\['gfswave'\\]"):
+    with pytest.raises(KeyError):
         _ = gb['invalid']
+    with pytest.raises(AttributeError):
+        _ = gb.invalid
 
-    # Test non-string key
-    with pytest.raises(KeyError, match="should be a string"):
-        _ = gb[123]
+    # Test integer indexing - single step
+    gb_single = gb[0]
+    assert isinstance(gb_single, Grib)
+    assert len(gb_single.step) == 1
+    assert gb_single.step[0] == gb.step[0]
+    assert gb_single is not gb
+
+    # Test integer array indexing - multiple steps
+    gb_multi = gb[[0, 1, 2]]
+    assert isinstance(gb_multi, Grib)
+    assert len(gb_multi.step) == 3
+    assert np.array_equal(gb_multi.step, gb.step[[0, 1, 2]])
+    assert gb_multi is not gb
+
+    # Test slice indexing
+    gb_slice = gb[0:5]
+    assert isinstance(gb_slice, Grib)
+    assert len(gb_slice.step) == 5
+    assert np.array_equal(gb_slice.step, gb.step[0:5])
+    assert gb_slice is not gb
+
+    # Test boolean indexing
+    mask = gb.step < 10
+    gb_bool = gb[mask]
+    assert isinstance(gb_bool, Grib)
+    assert np.all(gb_bool.step < 10)
+    assert gb_bool is not gb
+
+    # Test negative indexing
+    gb_last_step = gb[-1]
+    assert isinstance(gb_last_step, Grib)
+    assert len(gb_last_step.step) == 1
+    assert gb_last_step.step[0] == gb.step[-1]
+
+    # Test that original gb is not modified
+    original_step = gb.step.copy()
+    _ = gb[0:5]
+    assert np.array_equal(gb.step, original_step)
 
 
 def test_grib_download():
@@ -68,6 +109,14 @@ def test_grib_sel():
     assert subset4.name == "(['UGRD', 'VGRD'],[0, 1],{})"
     assert subset4.var == ['UGRD', 'VGRD']
     assert np.all(subset4.step == [0, 1])
+
+    # Test with valid filter key from idx columns
+    subset5 = gb.sel(var=['UGRD'], layer='surface')
+    assert subset5.filter_keys == {'layer': 'surface'}
+
+    # Test with invalid filter key
+    with pytest.raises(KeyError):
+        gb.sel(var=['UGRD'], invalid_key='value')
 
 
 def test_grib_str():
@@ -162,27 +211,46 @@ def test_grib_subset_getitem():
 
     # Test single step selection
     subset_single = subset[0]
-    assert subset_single.step == [0]
+    assert isinstance(subset_single, GribSubset)
+    assert len(subset_single.step) == 1
+    assert subset_single.step[0] == subset.step[0]
     assert subset_single.var == subset.var
+    assert subset_single is not subset
 
     # Test multiple steps selection
     subset_multi = subset[[0, 1, 2]]
-    assert np.array_equal(subset_multi.step, [0, 1, 2])
+    assert isinstance(subset_multi, GribSubset)
+    assert len(subset_multi.step) == 3
+    assert np.array_equal(subset_multi.step, subset.step[[0, 1, 2]])
     assert subset_multi.var == subset.var
+    assert subset_multi is not subset
+
+    # Test slice indexing
+    subset_slice = subset[0:5]
+    assert isinstance(subset_slice, GribSubset)
+    assert len(subset_slice.step) == 5
+    assert np.array_equal(subset_slice.step, subset.step[0:5])
+    assert subset_slice.var == subset.var
+    assert subset_slice is not subset
 
     # Test boolean indexing
     mask = np.array(subset.step) >= subset.current_step()
-    subset_next_step = subset[mask]
-    assert all(s >= subset.current_step() for s in subset_next_step.step)
-    assert subset_next_step.var == subset.var
+    subset_bool = subset[mask]
+    assert isinstance(subset_bool, GribSubset)
+    assert all(s >= subset.current_step() for s in subset_bool.step)
+    assert subset_bool.var == subset.var
+    assert subset_bool is not subset
 
-    # Test invalid step
-    with pytest.raises(KeyError, match="not found in step"):
-        _ = subset[99999]
+    # Test negative indexing
+    subset_neg = subset[-1]
+    assert isinstance(subset_neg, GribSubset)
+    assert len(subset_neg.step) == 1
+    assert subset_neg.step[0] == subset.step[-1]
 
-    # Test non-integer indexing
-    with pytest.raises(KeyError, match="support only integer dtype"):
-        _ = subset['invalid']
+    # Test that original subset is not modified
+    original_step = subset.step.copy()
+    _ = subset[0:5]
+    assert np.array_equal(subset.step, original_step)
 
 
 def test_grib_subset_properties():
@@ -219,4 +287,50 @@ def test_grib_subset_filter_keys():
     subset = GribSubset('test', gb, var=['UGRD'], step=[0, 1], level=10)
     assert subset.filter_keys == {'level': 10}
     assert subset.var == ['UGRD']
-    assert subset.step == [0, 1]
+    assert np.all(subset.step == [0, 1])
+
+
+def test_grib_subset_sel():
+    """Test GribSubset.sel method."""
+    subset = Grib(model='ecmwf_ifs')['wind']
+
+    # Test with only one step (keeps parent name by default)
+    subset_step = subset.sel(step=3)
+    assert isinstance(subset_step, GribSubset)
+    assert subset_step.name == 'wind'
+    assert subset_step.var == subset.var
+    assert np.array_equal(subset_step.step, [3])
+
+    # Test with custom name and only two steps
+    subset_named = subset.sel(name='two_first_steps', step=[3, 6])
+    assert subset_named.name == 'two_first_steps'
+    assert subset_named.var == subset.var
+    assert np.array_equal(subset_named.step, [3, 6])
+
+    # Test that original subset is not modified
+    original_filter_keys = subset.filter_keys.copy()
+    subset = subset.sel(step=[0, 12, 24])
+    assert subset.filter_keys == original_filter_keys
+
+    # Test with invalid filter key
+    with pytest.raises(KeyError):
+        subset.sel(invalid_key='value')
+
+def test_several_level():
+    """Test GribSubset with several level."""
+    MODELS['ecmwf_t'] = {
+        'product': 'oper',
+        'url': 'https://ecmwf-forecasts.s3.eu-central-1.amazonaws.com/',
+        'key': '{date}/{h:02d}z/ifs/0p25/oper/',
+        'idx': '.index',
+        'subsets': {'temperature': 't'}
+    }
+    grib_temperature = Grib(model='ecmwf_t', data_path=data_dir)
+    subset = grib_temperature['temperature']
+    subset = subset.sel(levelist = ['50', '100', '200'])
+    subset.download()
+    ds = subset.ds
+    ds = ds.assign_coords(step_original=ds.step)
+    ds = ds.set_index(step=['step_original', 'isobaricInhPa']).unstack('step')
+    ds = ds.rename({'step_original': 'step'})
+    print(ds)
