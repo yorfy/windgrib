@@ -1,15 +1,15 @@
-# WindGrib Usage Examples
+# WindGrib Usage Examples - Wind Data
 
-This section presents concrete examples showing different usage modes of WindGrib. Each example is designed to illustrate a specific aspect of the library.
+This section presents concrete examples showing different usage modes of WindGrib with wind data. Each example is designed to illustrate a specific aspect of the library.
 
 ## Table of Contents
 
-1. [Basic Download and Reading](#basic-download-and-reading)
-2. [Download Subset](#download-subset)
-3. [Data Visualization](#data-visualization)
-4. [Model Comparison](#model-comparison)
+1. [Basic Wind Data Download and Reading](#basic-wind-data-download-and-reading)
+2. [Wind Data Subsetting](#wind-data-subsetting)
+3. [Wind Data Visualization](#wind-data-visualization)
+4. [Wind Speed Model Comparison](#wind-speed-model-comparison)
 
-## Basic Download and Reading
+## Basic Wind Data Download and Reading
 
 This example shows how to download GRIB data and access it in a basic way.
 
@@ -46,7 +46,7 @@ if __name__ == '__main__':
 
 ```
 
-## Download Subset
+## Wind Data Subsetting
 
 This example shows how to download only specific subsets and forecast steps to minimize data transfer. Different indexing methods can be used depending on the model's step structure.
 
@@ -116,7 +116,7 @@ if __name__ == '__main__':
 - **Array indexing**: `gb['wind'][[0, 3, 6]]` - selects specific steps by position
 - **Combined**: `gb['wind'][condition][0:10]` - applies multiple filters sequentially
 
-## Data Visualization
+## Wind Data Visualization
 
 This example shows how to visualize meteorological data using matplotlib.
 
@@ -156,7 +156,7 @@ if __name__ == '__main__':
 ![Wind Visualization](images/wind_visualization.png)
 *Wind speed visualization from GFS Wave model*
 
-## Model Comparison
+## Wind Speed Model Comparison
 
 This example shows how to compare data between different weather models (ECMWF vs GFS).
 

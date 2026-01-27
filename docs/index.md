@@ -26,21 +26,22 @@ While [Herbie](https://github.com/blaylockbk/Herbie) excels at flexible, query-b
 
 ## 📚 Documentation Structure
 
-- **[Usage Examples](usage_examples.md)** - Practical examples with working code
-  - Basic download and data access
-  - Data visualization with matplotlib
-  - Model comparison (ECMWF vs GFS)
-  - Custom models for temperature data
+- **[Usage Examples](usage_examples.md)** - Practical examples with wind data
+  - Basic wind data download and access
+  - Wind data subsetting
+  - Wind data visualization with matplotlib
+  - Wind speed comparison between models (ECMWF vs GFS)
+
+- **[Custom Models](custom_models.md)** - Extending WindGrib to access other kinds of GRIB data
+  - Defining new data models
+  - Configuration examples
+  - Temperature data example
+  - Multi-level data indexing
 
 - **[Technical Guide](technical_guide.md)** - Implementation details for developers
   - System architecture and main classes
   - Download mechanisms and performance optimizations
   - xarray integration and extensibility
-
-- **[Custom Models](custom_models.md)** - Guide for extending WindGrib
-  - Defining new data models
-  - Configuration examples
-  - Integration with other data sources
 
 - **[Benchmark Results](benchmark_results.md)** - Performance comparison with Herbie
   - Detailed timing analysis
