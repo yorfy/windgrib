@@ -89,9 +89,11 @@ Subsets can be defined in multiple ways:
 'pressure': (['PRMSL'], 0, {'layer': ['surface']})
 ```
 
-### Subset with temperature Example
+### Subset with Temperature Example
 
 This example from [temperature_variation_near_toulouse.py](../examples/temperature_variation_near_toulouse.py) shows a complete custom model implementation:
+
+**Note:** WindGrib downloads global data and cannot subset by geographic region during download. For single-point analysis like this example, downloading the entire global temperature dataset may be suboptimal compared to specialized point-data APIs.
 
 ```python
 from matplotlib import pyplot as plt
@@ -129,6 +131,11 @@ if __name__ == '__main__':
     plt.savefig("../docs/images/temperature_variation_near_toulouse.png")
     print("Example completed")
 ```
+
+#### Generated Visualization
+
+![Temperature Variation](images/temperature_variation_near_toulouse.png)
+*Temperature variation near Toulouse from GFS atmospheric model*
 
 #### Key Points
 
