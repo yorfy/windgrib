@@ -47,37 +47,75 @@ if __name__ == '__main__':
 
 ```
 
-## Download Grib Subset
+## Download Subset
 
-This example shows how to download only specific subsets and forecast steps to minimize data transfer.
+This example shows how to download only specific subsets and forecast steps to minimize data transfer. Different indexing methods can be used depending on the model's step structure.
+
+### GFS Wave Model - Combined Indexing
 
 **Key Features:**
-- Downloads only the wind subset from ECMWF
-- Limits forecast steps to current + 10 steps
-- Demonstrates efficient targeted downloading
+- Uses boolean indexing to filter steps from current time
+- Uses slice indexing to select first 10 steps
+- Works well when steps are consecutive (1 step per hour)
 
 ```python
-"""Download only wind subset for specific forecast steps"""
-
 from windgrib import Grib
 
 if __name__ == '__main__':
-    # Create ECMWF instance
-    print("\n====Downloading ECMWF wind subset for limited steps====")
-    gb = Grib(model='ecmwf_ifs')
-    
-    # Get wind subset for current step to current step + 10
-    valid_steps = (gb.step >= gb.current_step) & (gb.step < gb.current_step + 10)
-    wind_subset = gb['wind'][valid_steps]
+    print("\n====Downloading GFS wind subset for limited steps====")
+    gb = Grib()
+    print(f"Available steps: {gb.step}")
+    # GFS wave model delivers one step per hour until step 120 then 1 step every 3 hours until step 384
 
+    # Select wind subset for the next 10 hours from current step
+    # (combination of boolean indexing and slice since there is 1 step per hour)
+    wind_subset = gb['wind'][gb.step >= gb.current_step][0:10]
     # Download only this subset
     wind_subset.download()
-    
+
     # Access the downloaded wind data
     wind_data = wind_subset.ds
     print(f"Downloaded steps: {wind_data.step.values}")
     print(f"Variables: {wind_data.data_vars}")
 ```
+
+### ECMWF IFS Model - Boolean Indexing Only
+
+**Key Features:**
+- Uses only boolean indexing for non-consecutive steps
+- Filters steps within a time range (current to current + 10 hours)
+- Necessary when steps have gaps (e.g., 3-hour or 6-hour intervals)
+
+```python
+from windgrib import Grib
+
+if __name__ == '__main__':
+    print("\n====Downloading ECMWF wind subset for limited steps====")
+    gb = Grib(model='ecmwf_ifs')
+    print(f"Available steps: {gb.step}")
+    # ECMWF ifs model delivers one step every 3 hours until step 144 then 1 step every 6 hours until step 360
+
+    # Select wind subset for the next 10 hours from current step
+    # (using only boolean indexing because there are missing steps)
+    valid_steps = (gb.step >= gb.current_step) & (gb.step < gb.current_step + 10)
+    wind_subset = gb['wind'][valid_steps]
+
+    # Download only this subset
+    wind_subset.download()
+
+    # Access the downloaded wind data
+    wind_data = wind_subset.ds
+    print(f"Downloaded steps: {wind_data.step.values}")
+    print(f"Variables: {wind_data.data_vars}")
+```
+
+### Indexing Methods Summary
+
+- **Boolean indexing**: `gb['wind'][gb.step >= gb.current_step]` - filters based on conditions
+- **Slice indexing**: `gb['wind'][0:10]` - selects consecutive elements by position
+- **Integer indexing**: `gb['wind'][0]` - selects a single step
+- **Array indexing**: `gb['wind'][[0, 3, 6]]` - selects specific steps by position
+- **Combined**: `gb['wind'][condition][0:10]` - applies multiple filters sequentially
 
 ## Data Visualization
 

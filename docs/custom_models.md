@@ -42,13 +42,14 @@ MODELS['gfs_temp'] = {
     'ext': ''
 }
 
-# Use the new model
-gb = Grib(model='gfs_temp')
-gb.download()
+if __name__ == '__main__':
+    # Use the new model
+    gb = Grib(model='gfs_temp')
+    gb.download()
 
-# Access the data
-temp_data = gb['temperature'].ds
-print(f"Mean temperature: {temp_data.t.mean().values:.2f} K")
+    # Access the data
+    temp_data = gb['temperature'].ds
+    print(f"Mean temperature: {temp_data.t.mean().values:.2f} K")
 ```
 
 ## Advanced Configuration
@@ -153,19 +154,20 @@ MODELS['ecmwf_t'] = {
     'subsets': {'temperature': 't'}
 }
 
-# Download temperature data at specific pressure levels
-gb = Grib(model='ecmwf_t')
-subset = gb['temperature'].sel(levelist=['50', '100', '200'])
-subset.download()
+if __name__ == '__main__':
+    # Download temperature data at specific pressure levels
+    gb = Grib(model='ecmwf_t')
+    subset = gb['temperature'].sel(levelist=['50', '100', '200'])
+    subset.download()
 
-# Restructure dataset to have levels as a separate dimension
-ds = subset.ds
-ds = ds.assign_coords(step_original=ds.step)
-ds = ds.set_index(step=['step_original', 'isobaricInhPa']).unstack('step')
-ds = ds.rename({'step_original': 'step'})
+    # Restructure dataset to have levels as a separate dimension
+    ds = subset.ds
+    ds = ds.assign_coords(step_original=ds.step)
+    ds = ds.set_index(step=['step_original', 'isobaricInhPa']).unstack('step')
+    ds = ds.rename({'step_original': 'step'})
 
-# Result: dataset with dimensions (step, isobaricInhPa, latitude, longitude)
-print(ds)
+    # Result: dataset with dimensions (step, isobaricInhPa, latitude, longitude)
+    print(ds)
 ```
 
 #### Key Techniques
